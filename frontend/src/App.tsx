@@ -14,48 +14,29 @@ export interface Ship {
   hits?: boolean[];
 }
 
-interface Message {
-  type: string;
-  [key: string]: any;
-}
+const API_URL = 'http://localhost:8000';
 
 function App() {
   const [gameId, setGameId] = useState<string | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [gameState, setGameState] = useState<GameState>('waiting');
   const [currentTurn, setCurrentTurn] = useState<string>('player1');
+
   const [ownBoard, setOwnBoard] = useState<CellStatus[][]>(
-    Array.from({ length: 10 }, () => Array.from({ length: 10 }, () => 'empty' as CellStatus))
+    Array.from({ length: 10 }, () =>
+      Array.from({ length: 10 }, () => 'empty' as CellStatus)
+    )
   );
+
   const [opponentBoard, setOpponentBoard] = useState<CellStatus[][]>(
-    Array.from({ length: 10 }, () => Array.from({ length: 10 }, () => 'empty' as CellStatus))
+    Array.from({ length: 10 }, () =>
+      Array.from({ length: 10 }, () => 'empty' as CellStatus)
+    )
   );
+
   const [_, setPlacedShips] = useState<Ship[]>([]);
-  const [ws, setWs] = useState<WebSocket | null>(null);
   const [message, setMessage] = useState<string>('');
   const [winner, setWinner] = useState<string | null>(null);
-
-  const API_URL = 'http://localhost:8000';
-  const WS_URL = API_URL.replace('http', 'ws');
-
-  const createGame = async () => {
-    try {
-      const response = await fetch(`${API_URL}/game/create`, {
-        method: 'POST',
-      });
-      const data = await response.json();
-      console.log('Game created with ID:', data.game_id);
-      setGameId(data.game_id);
-      setMessage('Waiting for opponent to join...');
-    } catch (error) {
-      console.error('Error creating game:', error);
-      setMessage('Error creating game');
-    }
-  };
-
-  const joinGame = (id: string) => {
-    setGameId(id);
-  };
 
   const { send } = useGameWebSocket({
     gameId,
@@ -83,16 +64,18 @@ function App() {
 
     onAttackResult: (data) => {
       if (data.is_attacker) {
-        setOpponentBoard(prev => {
-          const board = prev.map(r => [...r]);
+        setOpponentBoard(prevBoard => {
+          const board = prevBoard.map(row => [...row]);
           board[data.y][data.x] = data.result;
+          
           return board;
         });
         setMessage(`You ${data.result} at (${data.x}, ${data.y})`);
       } else {
-        setOwnBoard(prev => {
-          const board = prev.map(r => [...r]);
+        setOwnBoard(prevBoard => {
+          const board = prevBoard.map(row => [...row]);
           board[data.y][data.x] = data.result;
+
           return board;
         });
         setMessage(`Opponent ${data.result} at (${data.x}, ${data.y})`);
@@ -113,8 +96,8 @@ function App() {
       setMessage('Opponent disconnected');
     },
 
-    onError: (message) => {
-      setMessage(`Error: ${message}`);
+    onError: (msg) => {
+      setMessage(`Error: ${msg}`);
     },
 
     onClose: () => {
@@ -122,150 +105,74 @@ function App() {
     }
   });
 
+  const createGame = async () => {
+    try {
+      const response = await fetch(`${API_URL}/game/create`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+      setGameId(data.game_id);
+      setMessage('Waiting for opponent to join...');
+    } catch (error) {
+      console.error(error);
+      setMessage('Error creating game');
+    }
+  };
 
-  useEffect(() => {
-    if (!gameId) return;
+  const joinGame = (id: string) => {
+    setGameId(id);
+  };
 
-    const websocket = new WebSocket(`${WS_URL}/ws/${gameId}`);
+  const handleShipsPlaced = useCallback(
+    (ships: Ship[]) => {
+      setPlacedShips(ships);
 
-    websocket.onopen = () => {
-      console.log('WebSocket connected');
-      setMessage('Connected to game');
-    };
+      const newBoard: CellStatus[][] = Array.from({ length: 10 }, () =>
+        Array.from({ length: 10 }, () => 'empty' as CellStatus)
+      );
 
-    websocket.onmessage = (event) => {
-      const data: Message = JSON.parse(event.data);
-      console.log('Received:', data);
+      ships.forEach(ship => {
+        ship.positions.forEach(([x, y]) => {
+          newBoard[y][x] = 'ship';
+        });
+      });
 
-      switch (data.type) {
-        case 'player_assigned':
-          setPlayerId(data.player_id);
-          setGameState(data.game_state);
-          setMessage(`You are ${data.player_id}`);
-          break;
+      setOwnBoard(newBoard);
 
-        case 'game_ready':
-          setMessage(data.message);
-          setGameState('placing');
-          break;
+      send({
+        type: 'place_ships',
+        ships
+      });
+    },
+    [send]
+  );
 
-        case 'ships_placed':
-          if (data.success) {
-            setMessage('Ships placed successfully! Waiting for opponent...');
-          } else {
-            setMessage('Error placing ships: ' + data.error);
-          }
-          break;
-
-        case 'game_started':
-          setGameState('playing');
-          setCurrentTurn(data.current_turn);
-          setMessage('Game started!');
-          break;
-
-        case 'attack_result':
-          if (data.is_attacker) {
-            console.log('Updating opponent board at', data.x, data.y, 'to', data.result);
-
-            setOpponentBoard(prevBoard => {
-              const newBoard = prevBoard.map(row => [...row]);
-              newBoard[data.y][data.x] = data.result;
-              return newBoard;
-            });
-            
-            setMessage(`You ${data.result} at (${data.x}, ${data.y})`);
-          } else {
-            console.log('Updating own board at', data.x, data.y, 'to', data.result);
-
-            setOwnBoard(prevBoard => {
-              console.log('Own board before update:', prevBoard);
-
-              const newBoard = prevBoard.map(row => [...row]);
-              newBoard[data.y][data.x] = data.result;
-
-              console.log('Own board after update:', newBoard);
-              return newBoard;
-            });
-
-            setMessage(`Opponent ${data.result} at (${data.x}, ${data.y})`);
-          }
-          break;
-
-        case 'turn_changed':
-          setCurrentTurn(data.current_turn);
-          break;
-
-        case 'game_over':
-          setGameState('finished');
-          setWinner(data.winner);
-          setMessage(`Game Over! Winner: ${data.winner}`);
-          break;
-
-        case 'player_disconnected':
-          setMessage('Opponent disconnected');
-          break;
-
-        case 'error':
-          setMessage('Error: ' + data.message);
-          break;
+  const handleCellClick = useCallback(
+    (x: number, y: number, isOwnBoard: boolean) => {
+      if (
+        gameState !== 'playing' ||
+        playerId !== currentTurn ||
+        isOwnBoard
+      ) {
+        return;
       }
-    };
 
-    websocket.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      setMessage('Connection error');
-    };
+      if (opponentBoard[y][x] !== 'empty') {
+        return;
+      }
 
-    websocket.onclose = () => {
-      console.log('WebSocket disconnected');
-      setMessage('Disconnected from game');
-    };
-
-    setWs(websocket);
-
-    return () => {
-      websocket.close();
-    };
-  }, [gameId]);
+      send({
+        type: 'attack',
+        x,
+        y
+      });
+    },
+    [send, gameState, playerId, currentTurn, opponentBoard]
+  );
 
   useEffect(() => {
     console.log('Own board updated:', ownBoard);
   }, [ownBoard]);
-
-  const handleShipsPlaced = useCallback((ships: Ship[]) => {
-    if (!ws) return;
-
-    setPlacedShips(ships);
-
-    // Update own board
-    const newBoard: CellStatus[][] = Array.from({ length: 10 }, () => 
-      Array.from({ length: 10 }, () => 'empty' as CellStatus)
-    );
-    ships.forEach(ship => {
-      ship.positions.forEach(([x, y]) => {
-        newBoard[y][x] = 'ship';
-      });
-    });
-    setOwnBoard(newBoard);
-    
-    send({
-      type: 'place_ships',
-      ships
-    });
-  }, [ws]);
-
-  const handleCellClick = useCallback((x: number, y: number, isOwnBoard: boolean) => {
-    if (!ws || gameState !== 'playing' || playerId !== currentTurn || isOwnBoard) {
-      return;
-    }
-
-    // Don't allow attacking already attacked cells
-    if (opponentBoard[y][x] !== 'empty') {
-      return;
-    }
-
-    send({ type: 'attack', x, y });
-  }, [ws, gameState, playerId, currentTurn, opponentBoard]);
 
   return (
     <div className="App">
@@ -276,11 +183,12 @@ function App() {
           <button onClick={createGame} className="btn btn-primary">
             Create New Game
           </button>
+
           <div className="join-game">
             <input
               type="text"
               placeholder="Enter Game ID"
-              onKeyPress={(e) => {
+              onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   joinGame((e.target as HTMLInputElement).value);
                 }
@@ -319,16 +227,15 @@ function App() {
               <div className="board-container">
                 <h3>Your Board</h3>
                 <GameBoard
-                  key="own-board"
                   board={ownBoard}
                   onCellClick={(x, y) => handleCellClick(x, y, true)}
-                  isOwnBoard={true}
+                  isOwnBoard
                 />
               </div>
+
               <div className="board-container">
                 <h3>Opponent's Board</h3>
                 <GameBoard
-                  key="opponent-board"
                   board={opponentBoard}
                   onCellClick={(x, y) => handleCellClick(x, y, false)}
                   isOwnBoard={false}
