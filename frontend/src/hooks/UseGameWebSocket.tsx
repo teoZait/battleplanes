@@ -5,6 +5,7 @@ export function useGameWebSocket(params: {
     onPlayerAssigned: (data: any) => void;
     onGameReady: (data: any) => void;
     onGameStarted: (data: any) => void;
+    onShipsPlaced: (data: any) => void;
     onAttackResult: (data: any) => void;
     onTurnChanged: (data: any) => void;
     onGameOver: (data: any) => void;
@@ -39,6 +40,9 @@ export function useGameWebSocket(params: {
                     break;
                 case 'game_started':
                     params.onGameStarted(data);
+                    break;
+                case 'ships_placed':
+                    params.onShipsPlaced(data);
                     break;
                 case 'attack_result':
                     params.onAttackResult(data);

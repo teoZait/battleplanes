@@ -62,6 +62,14 @@ function App() {
       setMessage('Game started!');
     },
 
+    onShipsPlaced: (data) => {
+      if (data.success) {
+        setMessage('Ships placed successfully! Waiting for opponent...');
+      } else {
+        setMessage('Error placing ships: ' + data.error);
+      }
+    },
+
     onAttackResult: (data) => {
       if (data.is_attacker) {
         setOpponentBoard(prevBoard => {
