@@ -3,6 +3,7 @@ import './App.css';
 import GameBoard from './components/GameBoard';
 import ShipPlacement from './components/ShipPlacement';
 import GameInfo from './components/GameInfo';
+import { useGameWebSocket } from './hooks/UseGameWebSocket';
 
 export type CellStatus = 'empty' | 'ship' | 'hit' | 'miss';
 export type GameState = 'waiting' | 'placing' | 'playing' | 'finished';
@@ -17,9 +18,6 @@ interface Message {
   type: string;
   [key: string]: any;
 }
-
-const API_URL = 'http://localhost:8000';
-const WS_URL = API_URL.replace('http', 'ws');
 
 function App() {
   const [gameId, setGameId] = useState<string | null>(null);
@@ -36,6 +34,9 @@ function App() {
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [message, setMessage] = useState<string>('');
   const [winner, setWinner] = useState<string | null>(null);
+
+  const API_URL = 'http://localhost:8000';
+  const WS_URL = API_URL.replace('http', 'ws');
 
   const createGame = async () => {
     try {
@@ -55,6 +56,72 @@ function App() {
   const joinGame = (id: string) => {
     setGameId(id);
   };
+
+  const { send } = useGameWebSocket({
+    gameId,
+
+    onOpen: () => {
+      setMessage('Connected to game');
+    },
+
+    onPlayerAssigned: (data) => {
+      setPlayerId(data.player_id);
+      setGameState(data.game_state);
+      setMessage(`You are ${data.player_id}`);
+    },
+
+    onGameReady: (data) => {
+      setGameState('placing');
+      setMessage(data.message);
+    },
+
+    onGameStarted: (data) => {
+      setGameState('playing');
+      setCurrentTurn(data.current_turn);
+      setMessage('Game started!');
+    },
+
+    onAttackResult: (data) => {
+      if (data.is_attacker) {
+        setOpponentBoard(prev => {
+          const board = prev.map(r => [...r]);
+          board[data.y][data.x] = data.result;
+          return board;
+        });
+        setMessage(`You ${data.result} at (${data.x}, ${data.y})`);
+      } else {
+        setOwnBoard(prev => {
+          const board = prev.map(r => [...r]);
+          board[data.y][data.x] = data.result;
+          return board;
+        });
+        setMessage(`Opponent ${data.result} at (${data.x}, ${data.y})`);
+      }
+    },
+
+    onTurnChanged: (data) => {
+      setCurrentTurn(data.current_turn);
+    },
+
+    onGameOver: (data) => {
+      setGameState('finished');
+      setWinner(data.winner);
+      setMessage(`Game Over! Winner: ${data.winner}`);
+    },
+
+    onPlayerDisconnected: () => {
+      setMessage('Opponent disconnected');
+    },
+
+    onError: (message) => {
+      setMessage(`Error: ${message}`);
+    },
+
+    onClose: () => {
+      setMessage('Disconnected from game');
+    }
+  });
+
 
   useEffect(() => {
     if (!gameId) return;
@@ -119,7 +186,7 @@ function App() {
               console.log('Own board after update:', newBoard);
               return newBoard;
             });
-            
+
             setMessage(`Opponent ${data.result} at (${data.x}, ${data.y})`);
           }
           break;
@@ -180,12 +247,11 @@ function App() {
       });
     });
     setOwnBoard(newBoard);
-
-    // Send to server
-    ws.send(JSON.stringify({
+    
+    send({
       type: 'place_ships',
-      ships: ships
-    }));
+      ships
+    });
   }, [ws]);
 
   const handleCellClick = useCallback((x: number, y: number, isOwnBoard: boolean) => {
@@ -198,11 +264,7 @@ function App() {
       return;
     }
 
-    ws.send(JSON.stringify({
-      type: 'attack',
-      x,
-      y
-    }));
+    send({ type: 'attack', x, y });
   }, [ws, gameState, playerId, currentTurn, opponentBoard]);
 
   return (
