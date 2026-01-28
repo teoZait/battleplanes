@@ -1,0 +1,30 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: battleships-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - battleships-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: battleships-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - battleships-network
+    restart: unless-stopped
+
+networks:
+  battleships-network:
+    driver: bridge
