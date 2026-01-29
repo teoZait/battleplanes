@@ -1,4 +1,4 @@
-import { CellStatus, ServerMessage } from '../hooks/useGameWebSocket';
+import { CellStatus, ServerMessage } from '../hooks/UseGameWebSocket';
 
 export type GameState = 'waiting' | 'placing' | 'playing' | 'finished';
 

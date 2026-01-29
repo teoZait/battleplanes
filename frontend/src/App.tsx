@@ -1,10 +1,20 @@
-import { useCallback, useReducer, useState } from 'react';
-import { useGameWebSocket } from './hooks/useGameWebSocket';
+import { useState, useReducer, useCallback } from 'react';
+import './App.css';
+import GameBoard from './components/GameBoard';
+import ShipPlacement from './components/ShipPlacement';
+import GameInfo from './components/GameInfo';
+import { useGameWebSocket } from './hooks/UseGameWebSocket';
 import {
   gameReducer,
   initialGameState,
   createEmptyBoard
 } from './reducers/gameReducer';
+
+export interface Ship {
+  type: string;
+  positions: number[][];
+  hits?: boolean[];
+}
 
 const API_URL = 'http://localhost:8000';
 
