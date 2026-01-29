@@ -59,3 +59,5 @@ export function useGameWebSocket(params: {
 
   return { send };
 }
+
+export default useGameWebSocket;

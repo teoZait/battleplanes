@@ -1,4 +1,4 @@
-import { CellStatus } from '../App';
+import { CellStatus } from '../hooks/useGameWebSocket';
 import './GameBoard.css';
 
 interface GameBoardProps {

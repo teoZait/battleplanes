@@ -1,4 +1,4 @@
-import { GameState } from '../App';
+import { GameState } from '.././reducers/gameReducer';
 import './GameInfo.css';
 
 interface GameInfoProps {
