@@ -1,86 +1,61 @@
 import { useEffect, useRef } from 'react';
 
+export type CellStatus = 'empty' | 'ship' | 'hit' | 'miss';
+
+export type ServerMessage =
+  | { type: 'player_assigned'; player_id: string; game_state: 'waiting' | 'placing' | 'playing' }
+  | { type: 'game_ready'; message: string }
+  | { type: 'ships_placed'; success: boolean; error?: string }
+  | { type: 'game_started'; current_turn: string }
+  | { type: 'attack_result'; x: number; y: number; result: CellStatus; is_attacker: boolean }
+  | { type: 'turn_changed'; current_turn: string }
+  | { type: 'game_over'; winner: string }
+  | { type: 'player_disconnected' }
+  | { type: 'error'; message: string };
+
+export type ClientMessage =
+  | { type: 'place_ships'; ships: any[] }
+  | { type: 'attack'; x: number; y: number };
+
 export function useGameWebSocket(params: {
-    gameId: string | null;
-    onPlayerAssigned: (data: any) => void;
-    onGameReady: (data: any) => void;
-    onGameStarted: (data: any) => void;
-    onShipsPlaced: (data: any) => void;
-    onAttackResult: (data: any) => void;
-    onTurnChanged: (data: any) => void;
-    onGameOver: (data: any) => void;
-    onPlayerDisconnected: () => void;
-    onError: (message: string) => void;
-    onOpen?: () => void;
-    onClose?: () => void;
+  gameId: string | null;
+  onMessage: (msg: ServerMessage) => void;
+  onOpen?: () => void;
+  onClose?: () => void;
+  onError?: (msg: string) => void;
 }) {
-    const wsRef = useRef<WebSocket | null>(null);
-    const API_URL = 'http://localhost:8000';
-    const WS_URL = API_URL.replace('http', 'ws');
+  const wsRef = useRef<WebSocket | null>(null);
+  const API_URL = 'http://localhost:8000';
+  const WS_URL = API_URL.replace('http', 'ws');
 
-    useEffect(() => {
-        if (!params.gameId) return;
+  useEffect(() => {
+    if (!params.gameId) return;
 
-        const ws = new WebSocket(`${WS_URL}/ws/${params.gameId}`);
-        wsRef.current = ws;
+    const ws = new WebSocket(`${WS_URL}/ws/${params.gameId}`);
+    wsRef.current = ws;
 
-        ws.onopen = () => {
-            params.onOpen?.();
-        };
+    ws.onopen = () => params.onOpen?.();
 
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-
-            switch (data.type) {
-                case 'player_assigned':
-                    params.onPlayerAssigned(data);
-                    break;
-                case 'game_ready':
-                    params.onGameReady(data);
-                    break;
-                case 'game_started':
-                    params.onGameStarted(data);
-                    break;
-                case 'ships_placed':
-                    params.onShipsPlaced(data);
-                    break;
-                case 'attack_result':
-                    params.onAttackResult(data);
-                    break;
-                case 'turn_changed':
-                    params.onTurnChanged(data);
-                    break;
-                case 'game_over':
-                    params.onGameOver(data);
-                    break;
-                case 'player_disconnected':
-                    params.onPlayerDisconnected();
-                    break;
-                case 'error':
-                    params.onError(data.message);
-                    break;
-            }
-        };
-
-        ws.onerror = () => {
-            params.onError('WebSocket error');
-        };
-
-        ws.onclose = () => {
-            params.onClose?.();
-            wsRef.current = null;
-        };
-
-        return () => {
-            ws.close();
-        };
-    }, [params.gameId]);
-
-    const send = (payload: any) => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify(payload));
-        }
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data) as ServerMessage;
+      params.onMessage(data);
     };
 
-    return { send };
+    ws.onerror = () => params.onError?.('WebSocket error');
+
+    ws.onclose = () => {
+      wsRef.current = null;
+      params.onClose?.();
+    };
+
+    return () => ws.close();
+  }, [params.gameId]);
+
+  const send = (payload: ClientMessage) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(payload));
+    }
+  };
+
+  return { send };
 }

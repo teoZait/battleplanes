@@ -41,75 +41,82 @@ function App() {
   const { send } = useGameWebSocket({
     gameId,
 
-    onOpen: () => {
-      setMessage('Connected to game');
-    },
+    onOpen: () => setMessage('Connected to game'),
 
-    onPlayerAssigned: (data) => {
-      setPlayerId(data.player_id);
-      setGameState(data.game_state);
-      setMessage(`You are ${data.player_id}`);
-    },
+    onClose: () => setMessage('Disconnected from game'),
 
-    onGameReady: (data) => {
-      setGameState('placing');
-      setMessage(data.message);
-    },
+    onError: (msg) => setMessage(`Error: ${msg}`),
 
-    onGameStarted: (data) => {
-      setGameState('playing');
-      setCurrentTurn(data.current_turn);
-      setMessage('Game started!');
-    },
+    onMessage: (data) => {
+      switch (data.type) {
+        case 'player_assigned':
+          setPlayerId(data.player_id);
+          setGameState(data.game_state);
+          setMessage(`You are ${data.player_id}`);
+          break;
 
-    onShipsPlaced: (data) => {
-      if (data.success) {
-        setMessage('Ships placed successfully! Waiting for opponent...');
-      } else {
-        setMessage('Error placing ships: ' + data.error);
+        case 'game_ready':
+          setGameState('placing');
+          setMessage(data.message);
+          break;
+
+        case 'ships_placed':
+          if (data.success) {
+            setMessage('Ships placed successfully! Waiting for opponent...');
+          } else {
+            setMessage(`Error placing ships: ${data.error}`);
+          }
+          break;
+
+        case 'game_started':
+          setGameState('playing');
+          setCurrentTurn(data.current_turn);
+          setMessage('Game started!');
+          break;
+
+        case 'attack_result':
+          if (data.is_attacker) {
+            setOpponentBoard(prevBoard => {
+              const board = prevBoard.map(row => [...row]);
+              board[data.y][data.x] = data.result;
+
+              setMessage(`You ${data.result} at (${data.x}, ${data.y})`);
+              return board;
+            });
+          } else {
+            setOwnBoard(prevBoard => {
+              const board = prevBoard.map(row => [...row]);
+              board[data.y][data.x] = data.result;
+
+              setMessage(`Opponent ${data.result} at (${data.x}, ${data.y})`);
+              return board;
+            });
+          }
+          break;
+
+        case 'turn_changed':
+          setCurrentTurn(data.current_turn);
+          break;
+
+        case 'game_over':
+          setGameState('finished');
+          setWinner(data.winner);
+          setMessage(`Game Over! Winner: ${data.winner}`);
+          break;
+
+        case 'player_disconnected':
+          setMessage('Opponent disconnected');
+          break;
+
+        case 'error':
+          setMessage(`Error: ${data.message}`);
+          break;
+
+        default:
+          // 👇 compile-time exhaustiveness check
+          const _exhaustive: never = data;
+          return _exhaustive;
       }
-    },
-
-    onAttackResult: (data) => {
-      if (data.is_attacker) {
-        setOpponentBoard(prevBoard => {
-          const board = prevBoard.map(row => [...row]);
-          board[data.y][data.x] = data.result;
-          
-          return board;
-        });
-        setMessage(`You ${data.result} at (${data.x}, ${data.y})`);
-      } else {
-        setOwnBoard(prevBoard => {
-          const board = prevBoard.map(row => [...row]);
-          board[data.y][data.x] = data.result;
-
-          return board;
-        });
-        setMessage(`Opponent ${data.result} at (${data.x}, ${data.y})`);
-      }
-    },
-
-    onTurnChanged: (data) => {
-      setCurrentTurn(data.current_turn);
-    },
-
-    onGameOver: (data) => {
-      setGameState('finished');
-      setWinner(data.winner);
-      setMessage(`Game Over! Winner: ${data.winner}`);
-    },
-
-    onPlayerDisconnected: () => {
-      setMessage('Opponent disconnected');
-    },
-
-    onError: (msg) => {
-      setMessage(`Error: ${msg}`);
-    },
-
-    onClose: () => {
-      setMessage('Disconnected from game');
     }
   });
 
