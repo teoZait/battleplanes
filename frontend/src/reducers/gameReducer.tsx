@@ -12,6 +12,9 @@ export interface GameUIState {
   winner: string | null;
 }
 
+export type UIAction =
+  | { type: 'set_own_board'; board: CellStatus[][] };
+
 export const createEmptyBoard = (): CellStatus[][] =>
   Array.from({ length: 10 }, () =>
     Array.from({ length: 10 }, () => 'empty' as CellStatus)
@@ -29,7 +32,7 @@ export const initialGameState: GameUIState = {
 
 export function gameReducer(
   state: GameUIState,
-  action: ServerMessage
+  action: ServerMessage | UIAction
 ): GameUIState {
   switch (action.type) {
     case 'player_assigned':
@@ -104,6 +107,12 @@ export function gameReducer(
       return {
         ...state,
         message: `Error: ${action.message}`,
+      };
+
+    case 'set_own_board':
+      return {
+        ...state,
+        ownBoard: action.board,
       };
 
     default: {

@@ -44,6 +44,7 @@ function App() {
   const handleShipsPlaced = useCallback(
     (ships: Ship[]) => {
       const board = createEmptyBoard();
+
       ships.forEach(ship =>
         ship.positions.forEach(([x, y]) => {
           board[y][x] = 'ship';
@@ -51,11 +52,8 @@ function App() {
       );
 
       dispatch({
-        type: 'attack_result', // local-only UI update
-        x: -1,
-        y: -1,
-        result: 'ship',
-        is_attacker: false
+        type: 'set_own_board',
+        board
       });
 
       send({ type: 'place_ships', ships });
@@ -85,14 +83,39 @@ function App() {
 
       {!gameId && (
         <div className="menu">
-          <button onClick={createGame}>Create Game</button>
-          <input
-            placeholder="Game ID"
-            onKeyDown={(e) =>
-              e.key === 'Enter' &&
-              joinGame((e.target as HTMLInputElement).value)
-            }
-          />
+          <button
+            onClick={createGame}
+            className="btn btn-primary"
+          >
+            Create New Game
+          </button>
+
+          <div className="join-game">
+            <input
+              type="text"
+              placeholder="Enter Game ID"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  joinGame((e.target as HTMLInputElement).value);
+                }
+              }}
+            />
+
+            <button
+              onClick={() => {
+                const input = document.querySelector(
+                  '.join-game input'
+                ) as HTMLInputElement;
+
+                if (input?.value) {
+                  joinGame(input.value);
+                }
+              }}
+              className="btn btn-secondary"
+            >
+              Join Game
+            </button>
+          </div>
         </div>
       )}
 
