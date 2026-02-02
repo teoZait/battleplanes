@@ -6,7 +6,7 @@ import uuid
 import json
 from enum import Enum
 
-app = FastAPI(title="Battleships API")
+app = FastAPI(title="Warplanes API")
 
 # CORS middleware
 app.add_middleware(
@@ -19,27 +19,84 @@ app.add_middleware(
 
 class CellStatus(str, Enum):
     EMPTY = "empty"
-    SHIP = "ship"
+    PLANE = "plane"
+    HEAD = "head"
     HIT = "hit"
     MISS = "miss"
+    HEAD_HIT = "head_hit"
 
-class ShipType(str, Enum):
-    CARRIER = "carrier"
-    BATTLESHIP = "battleship"
-    CRUISER = "cruiser"
-    SUBMARINE = "submarine"
-    DESTROYER = "destroyer"
+class PlaneOrientation(str, Enum):
+    UP = "up"
+    DOWN = "down"
+    LEFT = "left"
+    RIGHT = "right"
 
-class Ship(BaseModel):
-    type: ShipType
+class Plane(BaseModel):
     positions: List[Tuple[int, int]]
-    hits: List[bool]
+    head_position: Tuple[int, int]
+    orientation: PlaneOrientation
+    is_destroyed: bool = False
 
 class GameState(str, Enum):
     WAITING = "waiting"
     PLACING = "placing"
     PLAYING = "playing"
     FINISHED = "finished"
+
+def get_plane_positions(head_x: int, head_y: int, orientation: PlaneOrientation) -> Tuple[List[Tuple[int, int]], Tuple[int, int]]:
+    """
+    Generate plane positions based on head position and orientation.
+    The plane shape:
+    [x] [x] [1] [x] [x]  <- row 0
+    [1] [1] [1] [1] [1]  <- row 1
+    [x] [x] [1] [x] [x]  <- row 2
+    [x] [1] [1] [1] [x]  <- row 3
+    
+    Head is at [2, 0] in the UP orientation
+    """
+    positions = []
+    
+    if orientation == PlaneOrientation.UP:
+        # Head at top middle
+        positions = [
+            (head_x, head_y),  # head
+            (head_x - 2, head_y + 1), (head_x - 1, head_y + 1), (head_x, head_y + 1), (head_x + 1, head_y + 1), (head_x + 2, head_y + 1),
+            (head_x, head_y + 2),
+            (head_x - 1, head_y + 3), (head_x, head_y + 3), (head_x + 1, head_y + 3)
+        ]
+        head = (head_x, head_y)
+        
+    elif orientation == PlaneOrientation.DOWN:
+        # Head at bottom middle
+        positions = [
+            (head_x, head_y),  # head
+            (head_x - 1, head_y - 1), (head_x, head_y - 1), (head_x + 1, head_y - 1),
+            (head_x, head_y - 2),
+            (head_x - 2, head_y - 3), (head_x - 1, head_y - 3), (head_x, head_y - 3), (head_x + 1, head_y - 3), (head_x + 2, head_y - 3)
+        ]
+        head = (head_x, head_y)
+        
+    elif orientation == PlaneOrientation.LEFT:
+        # Head at left middle
+        positions = [
+            (head_x, head_y),  # head
+            (head_x + 1, head_y - 2), (head_x + 1, head_y - 1), (head_x + 1, head_y), (head_x + 1, head_y + 1), (head_x + 1, head_y + 2),
+            (head_x + 2, head_y),
+            (head_x + 3, head_y - 1), (head_x + 3, head_y), (head_x + 3, head_y + 1)
+        ]
+        head = (head_x, head_y)
+        
+    else:  # RIGHT
+        # Head at right middle
+        positions = [
+            (head_x, head_y),  # head
+            (head_x - 1, head_y - 1), (head_x - 1, head_y), (head_x - 1, head_y + 1),
+            (head_x - 2, head_y),
+            (head_x - 3, head_y - 2), (head_x - 3, head_y - 1), (head_x - 3, head_y), (head_x - 3, head_y + 1), (head_x - 3, head_y + 2)
+        ]
+        head = (head_x, head_y)
+    
+    return positions, head
 
 class Game:
     def __init__(self, game_id: str):
@@ -49,7 +106,7 @@ class Game:
             "player1": [["empty" for _ in range(10)] for _ in range(10)],
             "player2": [["empty" for _ in range(10)] for _ in range(10)]
         }
-        self.ships: Dict[str, List[Dict]] = {"player1": [], "player2": []}
+        self.planes: Dict[str, List[Plane]] = {"player1": [], "player2": []}
         self.state = GameState.WAITING
         self.current_turn = "player1"
         self.ready: Dict[str, bool] = {"player1": False, "player2": False}
@@ -64,31 +121,43 @@ class Game:
             return "player2"
         return None
 
-    def place_ship(self, player_id: str, ship_data: Dict):
-        ship_type = ship_data["type"]
-        positions = ship_data["positions"]
+    def place_plane(self, player_id: str, plane_data: Dict):
+        head_x = plane_data["head_x"]
+        head_y = plane_data["head_y"]
+        orientation = PlaneOrientation(plane_data["orientation"])
         
-        # Validate positions
+        # Get plane positions
+        positions, head = get_plane_positions(head_x, head_y, orientation)
+        
+        # Validate all positions are within bounds
         for pos in positions:
             x, y = pos
             if x < 0 or x >= 10 or y < 0 or y >= 10:
-                return False
+                return False, "Plane out of bounds"
             if self.boards[player_id][y][x] != "empty":
-                return False
+                return False, "Plane overlaps with another plane"
         
-        # Place ship on board
+        # Check if player already has 2 planes
+        if len(self.planes[player_id]) >= 2:
+            return False, "Already placed 2 planes"
+        
+        # Place plane on board
         for pos in positions:
             x, y = pos
-            self.boards[player_id][y][x] = "ship"
+            if pos == head:
+                self.boards[player_id][y][x] = "head"
+            else:
+                self.boards[player_id][y][x] = "plane"
         
-        # Store ship
-        self.ships[player_id].append({
-            "type": ship_type,
-            "positions": positions,
-            "hits": [False] * len(positions)
-        })
+        # Store plane
+        self.planes[player_id].append(Plane(
+            positions=positions,
+            head_position=head,
+            orientation=orientation,
+            is_destroyed=False
+        ))
         
-        return True
+        return True, "Plane placed successfully"
 
     def attack(self, attacker: str, x: int, y: int):
         defender = "player2" if attacker == "player1" else "player1"
@@ -98,15 +167,17 @@ class Game:
         
         cell = self.boards[defender][y][x]
         
-        if cell == "ship":
+        if cell == "plane":
             self.boards[defender][y][x] = "hit"
-            # Update ship hits
-            for ship in self.ships[defender]:
-                if [x, y] in ship["positions"]:
-                    idx = ship["positions"].index([x, y])
-                    ship["hits"][idx] = True
-                    break
             return "hit"
+        elif cell == "head":
+            self.boards[defender][y][x] = "head_hit"
+            # Mark the plane as destroyed
+            for plane in self.planes[defender]:
+                if plane.head_position == (x, y):
+                    plane.is_destroyed = True
+                    break
+            return "head_hit"
         elif cell == "empty":
             self.boards[defender][y][x] = "miss"
             return "miss"
@@ -114,24 +185,23 @@ class Game:
             return "already_attacked"
 
     def check_winner(self):
+        """Check if all planes of a player are destroyed (both heads hit)"""
         for player_id in ["player1", "player2"]:
-            all_sunk = True
-            for ship in self.ships[player_id]:
-                if not all(ship["hits"]):
-                    all_sunk = False
-                    break
-            if all_sunk and len(self.ships[player_id]) > 0:
-                return "player2" if player_id == "player1" else "player1"
+            if len(self.planes[player_id]) == 2:  # Player has placed both planes
+                destroyed_count = sum(1 for plane in self.planes[player_id] if plane.is_destroyed)
+                if destroyed_count == 2:
+                    # This player lost, return the opponent as winner
+                    return "player2" if player_id == "player1" else "player1"
         return None
 
     def get_masked_board(self, player_id: str):
-        """Return opponent's board with ships hidden"""
+        """Return opponent's board with planes hidden"""
         opponent = "player2" if player_id == "player1" else "player1"
         masked = []
         for row in self.boards[opponent]:
             masked_row = []
             for cell in row:
-                if cell == "ship":
+                if cell == "plane" or cell == "head":
                     masked_row.append("empty")
                 else:
                     masked_row.append(cell)
@@ -169,7 +239,7 @@ manager = ConnectionManager()
 
 @app.get("/")
 async def root():
-    return {"message": "Battleships API"}
+    return {"message": "Warplanes API"}
 
 @app.post("/game/create")
 async def create_game():
@@ -219,27 +289,26 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
     if game.state == GameState.PLACING:
         await manager.broadcast_to_game(game_id, {
             "type": "game_ready",
-            "message": "Both players connected. Place your ships!"
+            "message": "Both players connected. Place your planes! (2 planes each)"
         })
     
     try:
         while True:
             data = await websocket.receive_json()
             
-            if data["type"] == "place_ships":
-                ships = data["ships"]
-                success = True
-                for ship in ships:
-                    if not game.place_ship(player_id, ship):
-                        success = False
-                        break
+            if data["type"] == "place_plane":
+                success, message = game.place_plane(player_id, data)
                 
-                if success:
+                await manager.send_to_player(game_id, player_id, {
+                    "type": "plane_placed",
+                    "success": success,
+                    "message": message,
+                    "planes_count": len(game.planes[player_id])
+                })
+                
+                # Check if player is ready (placed both planes)
+                if len(game.planes[player_id]) == 2:
                     game.ready[player_id] = True
-                    await manager.send_to_player(game_id, player_id, {
-                        "type": "ships_placed",
-                        "success": True
-                    })
                     
                     # Check if both players are ready
                     if game.ready["player1"] and game.ready["player2"]:
@@ -248,12 +317,6 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
                             "type": "game_started",
                             "current_turn": game.current_turn
                         })
-                else:
-                    await manager.send_to_player(game_id, player_id, {
-                        "type": "ships_placed",
-                        "success": False,
-                        "error": "Invalid ship placement"
-                    })
             
             elif data["type"] == "attack":
                 if game.state != GameState.PLAYING:

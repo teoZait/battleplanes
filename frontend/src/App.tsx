@@ -1,19 +1,19 @@
 import { useState, useReducer, useCallback } from 'react';
 import './App.css';
 import GameBoard from './components/GameBoard';
-import ShipPlacement from './components/ShipPlacement';
+import PlanePlacement from './components/PlanePlacement';
 import GameInfo from './components/GameInfo';
-import { useGameWebSocket } from './hooks/UseGameWebSocket';
+import { useGameWebSocket, CellStatus } from './hooks/UseGameWebSocket';
 import {
   gameReducer,
   initialGameState,
   createEmptyBoard
 } from './reducers/gameReducer';
 
-export interface Ship {
-  type: string;
-  positions: number[][];
-  hits?: boolean[];
+interface Plane {
+  head_x: number;
+  head_y: number;
+  orientation: 'up' | 'down' | 'left' | 'right';
 }
 
 const API_URL = 'http://localhost:8000';
@@ -41,22 +41,63 @@ function App() {
 
   const joinGame = (id: string) => setGameId(id);
 
-  const handleShipsPlaced = useCallback(
-    (ships: Ship[]) => {
+  const getPlanePositions = (headX: number, headY: number, orient: string): { x: number; y: number }[] => {
+    const positions: { x: number; y: number }[] = [];
+    
+    if (orient === 'up') {
+      positions.push({ x: headX, y: headY });
+      positions.push({ x: headX - 2, y: headY + 1 }, { x: headX - 1, y: headY + 1 }, { x: headX, y: headY + 1 }, { x: headX + 1, y: headY + 1 }, { x: headX + 2, y: headY + 1 });
+      positions.push({ x: headX, y: headY + 2 });
+      positions.push({ x: headX - 1, y: headY + 3 }, { x: headX, y: headY + 3 }, { x: headX + 1, y: headY + 3 });
+    } else if (orient === 'down') {
+      positions.push({ x: headX, y: headY });
+      positions.push({ x: headX - 1, y: headY - 1 }, { x: headX, y: headY - 1 }, { x: headX + 1, y: headY - 1 });
+      positions.push({ x: headX, y: headY - 2 });
+      positions.push({ x: headX - 2, y: headY - 3 }, { x: headX - 1, y: headY - 3 }, { x: headX, y: headY - 3 }, { x: headX + 1, y: headY - 3 }, { x: headX + 2, y: headY - 3 });
+    } else if (orient === 'left') {
+      positions.push({ x: headX, y: headY });
+      positions.push({ x: headX + 1, y: headY - 2 }, { x: headX + 1, y: headY - 1 }, { x: headX + 1, y: headY }, { x: headX + 1, y: headY + 1 }, { x: headX + 1, y: headY + 2 });
+      positions.push({ x: headX + 2, y: headY });
+      positions.push({ x: headX + 3, y: headY - 1 }, { x: headX + 3, y: headY }, { x: headX + 3, y: headY + 1 });
+    } else {
+      positions.push({ x: headX, y: headY });
+      positions.push({ x: headX - 1, y: headY - 1 }, { x: headX - 1, y: headY }, { x: headX - 1, y: headY + 1 });
+      positions.push({ x: headX - 2, y: headY });
+      positions.push({ x: headX - 3, y: headY - 2 }, { x: headX - 3, y: headY - 1 }, { x: headX - 3, y: headY }, { x: headX - 3, y: headY + 1 }, { x: headX - 3, y: headY + 2 });
+    }
+    
+    return positions;
+  };
+
+  const handlePlanesPlaced = useCallback(
+    (planes: Plane[]) => {
       const board = createEmptyBoard();
 
-      ships.forEach(ship =>
-        ship.positions.forEach(([x, y]) => {
-          board[y][x] = 'ship';
-        })
-      );
+      planes.forEach(plane => {
+        const positions = getPlanePositions(plane.head_x, plane.head_y, plane.orientation);
+        positions.forEach((pos, index) => {
+          if (index === 0) {
+            board[pos.y][pos.x] = 'head' as CellStatus;
+          } else {
+            board[pos.y][pos.x] = 'plane' as CellStatus;
+          }
+        });
+      });
 
       dispatch({
         type: 'set_own_board',
         board
       });
 
-      send({ type: 'place_ships', ships });
+      // Send each plane to the server
+      planes.forEach(plane => {
+        send({ 
+          type: 'place_plane', 
+          head_x: plane.head_x, 
+          head_y: plane.head_y, 
+          orientation: plane.orientation 
+        });
+      });
     },
     [send]
   );
@@ -79,7 +120,7 @@ function App() {
 
   return (
     <div className="App">
-      <h1>⚓ Battleships ⚓</h1>
+      <h1>✈️ Warplanes ✈️</h1>
 
       {!gameId && (
         <div className="menu">
@@ -131,26 +172,32 @@ function App() {
           />
 
           {state.gameState === 'placing' && (
-            <ShipPlacement onShipsPlaced={handleShipsPlaced} />
+            <PlanePlacement onPlanesPlaced={handlePlanesPlaced} />
           )}
 
           {(state.gameState === 'playing' ||
             state.gameState === 'finished') && (
             <div className="game-boards">
-              <GameBoard
-                board={state.ownBoard}
-                onCellClick={(x, y) =>
-                  handleCellClick(x, y, true)
-                }
-                isOwnBoard
-              />
-              <GameBoard
-                board={state.opponentBoard}
-                onCellClick={(x, y) =>
-                  handleCellClick(x, y, false)
-                }
-                isOwnBoard={false}
-              />
+              <div className="board-container">
+                <h3>Your Airspace</h3>
+                <GameBoard
+                  board={state.ownBoard}
+                  onCellClick={(x, y) =>
+                    handleCellClick(x, y, true)
+                  }
+                  isOwnBoard
+                />
+              </div>
+              <div className="board-container">
+                <h3>Enemy Airspace</h3>
+                <GameBoard
+                  board={state.opponentBoard}
+                  onCellClick={(x, y) =>
+                    handleCellClick(x, y, false)
+                  }
+                  isOwnBoard={false}
+                />
+              </div>
             </div>
           )}
         </>

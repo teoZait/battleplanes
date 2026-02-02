@@ -18,18 +18,22 @@ const GameBoard = ({ board, onCellClick, isOwnBoard }: GameBoardProps) => {
               className={`cell ${cell} ${!isOwnBoard ? 'clickable' : ''}`}
               onClick={() => onCellClick(x, y)}
             >
-              {cell === 'ship' && isOwnBoard && (
-                <div className="ship-segment">
-                  <div className="ship-body"></div>
-                  <div className="ship-highlight"></div>
+              {(cell === 'plane' as CellStatus) && isOwnBoard && (
+                <div className="plane-segment">
+                  <div className="plane-body"></div>
                 </div>
               )}
-              {cell === 'hit' && (
+              {(cell === 'head' as CellStatus) && isOwnBoard && (
+                <div className="plane-segment head">
+                  <div className="plane-body"></div>
+                  <div className="cockpit">✈️</div>
+                </div>
+              )}
+              {(cell === 'hit' as CellStatus) && (
                 <>
                   {isOwnBoard && (
-                    <div className="ship-segment">
-                      <div className="ship-body"></div>
-                      <div className="ship-highlight"></div>
+                    <div className="plane-segment">
+                      <div className="plane-body"></div>
                     </div>
                   )}
                   <div className="hit-marker">
@@ -38,7 +42,20 @@ const GameBoard = ({ board, onCellClick, isOwnBoard }: GameBoardProps) => {
                   </div>
                 </>
               )}
-              {cell === 'miss' && (
+              {(cell === 'head_hit' as CellStatus) && (
+                <>
+                  {isOwnBoard && (
+                    <div className="plane-segment head">
+                      <div className="plane-body"></div>
+                    </div>
+                  )}
+                  <div className="hit-marker">
+                    <div className="explosion big"></div>
+                    <div className="fire big">💥</div>
+                  </div>
+                </>
+              )}
+              {(cell === 'miss' as CellStatus) && (
                 <div className="miss-marker">
                   <div className="splash"></div>
                   💧

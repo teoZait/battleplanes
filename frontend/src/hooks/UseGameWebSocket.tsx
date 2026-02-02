@@ -1,20 +1,20 @@
 import { useEffect, useRef } from 'react';
 
-export type CellStatus = 'empty' | 'ship' | 'hit' | 'miss';
+export type CellStatus = 'empty' | 'plane' | 'head' | 'hit' | 'miss' | 'head_hit';
 
 export type ServerMessage =
   | { type: 'player_assigned'; player_id: string; game_state: 'waiting' | 'placing' | 'playing' }
   | { type: 'game_ready'; message: string }
-  | { type: 'ships_placed'; success: boolean; error?: string }
+  | { type: 'plane_placed'; success: boolean; message: string; planes_count: number }
   | { type: 'game_started'; current_turn: string }
-  | { type: 'attack_result'; x: number; y: number; result: CellStatus; is_attacker: boolean }
+  | { type: 'attack_result'; x: number; y: number; result: string; is_attacker: boolean }
   | { type: 'turn_changed'; current_turn: string }
   | { type: 'game_over'; winner: string }
   | { type: 'player_disconnected' }
   | { type: 'error'; message: string };
 
 export type ClientMessage =
-  | { type: 'place_ships'; ships: any[] }
+  | { type: 'place_plane'; head_x: number; head_y: number; orientation: string }
   | { type: 'attack'; x: number; y: number };
 
 export function useGameWebSocket(params: {
