@@ -115,11 +115,12 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
     setOrientation(orientations[(currentIndex + 1) % 4]);
   };
 
-  const isCellHovered = (x: number, y: number): { isHovered: boolean; isValid: boolean } => {
-    const hovered = hoveredCells.find(cell => cell.x === x && cell.y === y);
+  const isCellHovered = (x: number, y: number): { isHovered: boolean; isValid: boolean; isHead: boolean } => {
+    const hoveredIndex = hoveredCells.findIndex(cell => cell.x === x && cell.y === y);
     return {
-      isHovered: !!hovered,
-      isValid: hovered?.isValid ?? false
+      isHovered: hoveredIndex !== -1,
+      isValid: hoveredIndex !== -1 ? hoveredCells[hoveredIndex].isValid : false,
+      isHead: hoveredIndex === 0 // First position is always the head
     };
   };
 
@@ -128,7 +129,7 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
       <div className="placement-info">
         <h2>Place Your Planes</h2>
         <p>Place {2 - placedPlanes.length} more plane{placedPlanes.length === 1 ? '' : 's'}</p>
-        <p className="instruction">Click the head position to place your plane</p>
+        <p className="instruction">Hover to preview, click the head position to place</p>
         <button
           onClick={rotateOrientation}
           className="btn btn-rotate"
@@ -141,7 +142,7 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
         {board.map((row, y) => (
           <div key={y} className="board-row">
             {row.map((cell, x) => {
-              const { isHovered, isValid } = isCellHovered(x, y);
+              const { isHovered, isValid, isHead } = isCellHovered(x, y);
               return (
                 <div
                   key={`${x}-${y}`}
@@ -150,6 +151,7 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
                   onMouseEnter={() => handleCellHover(x, y)}
                   onMouseLeave={() => setHoveredCells([])}
                 >
+                  {/* Show already placed planes */}
                   {cell === 'plane' && (
                     <div className="plane-segment">
                       <div className="plane-body"></div>
@@ -159,6 +161,22 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
                     <div className="plane-segment head">
                       <div className="plane-body"></div>
                       <div className="cockpit">✈️</div>
+                    </div>
+                  )}
+                  
+                  {/* Show hover preview */}
+                  {isHovered && cell === 'empty' && (
+                    <div className={`plane-preview ${isValid ? 'valid' : 'invalid'}`}>
+                      {isHead ? (
+                        <div className="preview-head">
+                          <div className="preview-body"></div>
+                          <div className="preview-cockpit">✈️</div>
+                        </div>
+                      ) : (
+                        <div className="preview-segment">
+                          <div className="preview-body"></div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
