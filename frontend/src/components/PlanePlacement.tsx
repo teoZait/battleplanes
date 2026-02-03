@@ -11,6 +11,36 @@ interface PlanePlacementProps {
   onPlanesPlaced: (planes: Plane[]) => void;
 }
 
+const BASE_PLANE_SHAPE: [number, number][] = [
+  [0, 0], // head
+  [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1],
+  [0, 2],
+  [-1, 3], [0, 3], [1, 3],
+];
+
+function rotate(dx: number, dy: number, orientation: string): [number, number] {
+  switch (orientation) {
+    case 'up':
+      return [dx, dy];
+    case 'right':
+      return [dy, -dx];
+    case 'down':
+      return [-dx, -dy];
+    case 'left':
+      return [-dy, dx];
+    default:
+      return [dx, dy];
+  }
+}
+
+function getPlanePositions(headX: number, headY: number, orientation: string) {
+  return BASE_PLANE_SHAPE.map(([dx, dy]) => {
+    const [rdx, rdy] = rotate(dx, dy, orientation);
+    return { x: headX + rdx, y: headY + rdy };
+  });
+}
+
+
 type CellStatus = 'empty' | 'plane' | 'head' | 'hover' | 'invalid';
 
 const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
@@ -21,80 +51,51 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
   const [orientation, setOrientation] = useState<'up' | 'down' | 'left' | 'right'>('up');
   const [hoveredCells, setHoveredCells] = useState<{ x: number; y: number; isValid: boolean }[]>([]);
 
-  const getPlanePositions = (headX: number, headY: number, orient: string): { x: number; y: number }[] => {
-    const positions: { x: number; y: number }[] = [];
+  const previewPlane = async (head_x: number, head_y: number) => {
+    const planePositions = getPlanePositions(head_x, head_y, orientation);
+    const isValid = planePositions.every((pos: any) =>
+      pos.x >= 0 &&
+      pos.x < 10 &&
+      pos.y >= 0 &&
+      pos.y < 10 &&
+      board[pos.y][pos.x] === 'empty'
+    );
     
-    if (orient === 'up') {
-      positions.push({ x: headX, y: headY });  // head
-      positions.push({ x: headX - 2, y: headY + 1 }, { x: headX - 1, y: headY + 1 }, { x: headX, y: headY + 1 }, { x: headX + 1, y: headY + 1 }, { x: headX + 2, y: headY + 1 });
-      positions.push({ x: headX, y: headY + 2 });
-      positions.push({ x: headX - 1, y: headY + 3 }, { x: headX, y: headY + 3 }, { x: headX + 1, y: headY + 3 });
-    } else if (orient === 'down') {
-      positions.push({ x: headX, y: headY });  // head
-      positions.push({ x: headX - 1, y: headY - 1 }, { x: headX, y: headY - 1 }, { x: headX + 1, y: headY - 1 });
-      positions.push({ x: headX, y: headY - 2 });
-      positions.push({ x: headX - 2, y: headY - 3 }, { x: headX - 1, y: headY - 3 }, { x: headX, y: headY - 3 }, { x: headX + 1, y: headY - 3 }, { x: headX + 2, y: headY - 3 });
-    } else if (orient === 'left') {
-      positions.push({ x: headX, y: headY });  // head
-      positions.push({ x: headX + 1, y: headY - 2 }, { x: headX + 1, y: headY - 1 }, { x: headX + 1, y: headY }, { x: headX + 1, y: headY + 1 }, { x: headX + 1, y: headY + 2 });
-      positions.push({ x: headX + 2, y: headY });
-      positions.push({ x: headX + 3, y: headY - 1 }, { x: headX + 3, y: headY }, { x: headX + 3, y: headY + 1 });
-    } else {  // right
-      positions.push({ x: headX, y: headY });  // head
-      positions.push({ x: headX - 1, y: headY - 1 }, { x: headX - 1, y: headY }, { x: headX - 1, y: headY + 1 });
-      positions.push({ x: headX - 2, y: headY });
-      positions.push({ x: headX - 3, y: headY - 2 }, { x: headX - 3, y: headY - 1 }, { x: headX - 3, y: headY }, { x: headX - 3, y: headY + 1 }, { x: headX - 3, y: headY + 2 });
-    }
-    
-    return positions;
-  };
-
-  const canPlacePlane = (headX: number, headY: number): boolean => {
-    const positions = getPlanePositions(headX, headY, orientation);
-    
-    for (const pos of positions) {
-      if (pos.x < 0 || pos.x >= 10 || pos.y < 0 || pos.y >= 10) {
-        return false;
-      }
-      if (board[pos.y][pos.x] !== 'empty') {
-        return false;
-      }
-    }
-    return true;
-  };
-
-  const handleCellHover = (x: number, y: number) => {
-    if (placedPlanes.length >= 2) return;
-
-    const positions = getPlanePositions(x, y, orientation);
-    const isValid = canPlacePlane(x, y);
-    
-    setHoveredCells(positions.map(pos => ({ ...pos, isValid })));
+    setHoveredCells(
+      planePositions.map((pos: { x: number; y: number }) => ({
+        x: pos.x,
+        y: pos.y,
+        isValid,
+      }))
+    );
   };
 
   const handleCellClick = (x: number, y: number) => {
     if (placedPlanes.length >= 2) return;
 
-    if (canPlacePlane(x, y)) {
-      const positions = getPlanePositions(x, y, orientation);
-      const newBoard = board.map(row => [...row]);
-
-      positions.forEach((pos, index) => {
-        if (index === 0) {
-          newBoard[pos.y][pos.x] = 'head';
-        } else {
-          newBoard[pos.y][pos.x] = 'plane';
-        }
-      });
-
-      setBoard(newBoard);
-      setPlacedPlanes([...placedPlanes, {
-        head_x: x,
-        head_y: y,
-        orientation: orientation
-      }]);
-      setHoveredCells([]);
+    const invalidCells = hoveredCells.filter((cell: { isValid: boolean }) => !cell.isValid);
+    if (invalidCells.length > 0) {
+      return;
     }
+
+    const positions = hoveredCells.map((cell: { x: number; y: number }) => ({ x: cell.x, y: cell.y }));
+    const newBoard = board.map((row: CellStatus[]) => [...row]);
+
+    positions.forEach((pos: { x: number; y: number }, index: number) => {
+      if (index === 0) {
+        newBoard[pos.y][pos.x] = 'head';
+      } else {
+        newBoard[pos.y][pos.x] = 'plane';
+      }
+    });
+
+    setBoard(newBoard);
+    setPlacedPlanes([...placedPlanes, {
+      head_x: x,
+      head_y: y,
+      orientation: orientation
+    }]);
+    setHoveredCells([]);
   };
 
   const handleConfirm = () => {
@@ -116,7 +117,7 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
   };
 
   const isCellHovered = (x: number, y: number): { isHovered: boolean; isValid: boolean; isHead: boolean } => {
-    const hoveredIndex = hoveredCells.findIndex(cell => cell.x === x && cell.y === y);
+    const hoveredIndex = hoveredCells.findIndex((cell: { x: number; y: number }) => cell.x === x && cell.y === y);
     return {
       isHovered: hoveredIndex !== -1,
       isValid: hoveredIndex !== -1 ? hoveredCells[hoveredIndex].isValid : false,
@@ -148,7 +149,7 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
                   key={`${x}-${y}`}
                   className={`cell ${cell} ${isHovered ? (isValid ? 'hovered-valid' : 'hovered-invalid') : ''}`}
                   onClick={() => handleCellClick(x, y)}
-                  onMouseEnter={() => handleCellHover(x, y)}
+                  onMouseEnter={() => previewPlane(x, y)}
                   onMouseLeave={() => setHoveredCells([])}
                 >
                   {/* Show already placed planes */}

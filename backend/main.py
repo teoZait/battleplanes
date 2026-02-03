@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Tuple
@@ -35,6 +35,7 @@ class Plane(BaseModel):
     positions: List[Tuple[int, int]]
     head_position: Tuple[int, int]
     orientation: PlaneOrientation
+    hit_positions: List[Tuple[int, int]] = []
     is_destroyed: bool = False
 
 class GameState(str, Enum):
@@ -42,6 +43,24 @@ class GameState(str, Enum):
     PLACING = "placing"
     PLAYING = "playing"
     FINISHED = "finished"
+
+def rotate(dx: int, dy: int, orientation: PlaneOrientation) -> Tuple[int, int]:
+    if orientation == PlaneOrientation.UP:
+        return dx, dy
+    elif orientation == PlaneOrientation.RIGHT:
+        return dy, -dx
+    elif orientation == PlaneOrientation.DOWN:
+        return -dx, -dy
+    else:  # LEFT
+        return -dy, dx
+
+
+BASE_PLANE_SHAPE = [
+    (0, 0),  # head
+    (-2, 1), (-1, 1), (0, 1), (1, 1), (2, 1),
+    (0, 2),
+    (-1, 3), (0, 3), (1, 3),
+]
 
 def get_plane_positions(head_x: int, head_y: int, orientation: PlaneOrientation) -> Tuple[List[Tuple[int, int]], Tuple[int, int]]:
     """
@@ -55,48 +74,13 @@ def get_plane_positions(head_x: int, head_y: int, orientation: PlaneOrientation)
     Head is at [2, 0] in the UP orientation
     """
     positions = []
-    
-    if orientation == PlaneOrientation.UP:
-        # Head at top middle
-        positions = [
-            (head_x, head_y),  # head
-            (head_x - 2, head_y + 1), (head_x - 1, head_y + 1), (head_x, head_y + 1), (head_x + 1, head_y + 1), (head_x + 2, head_y + 1),
-            (head_x, head_y + 2),
-            (head_x - 1, head_y + 3), (head_x, head_y + 3), (head_x + 1, head_y + 3)
-        ]
-        head = (head_x, head_y)
-        
-    elif orientation == PlaneOrientation.DOWN:
-        # Head at bottom middle
-        positions = [
-            (head_x, head_y),  # head
-            (head_x - 1, head_y - 1), (head_x, head_y - 1), (head_x + 1, head_y - 1),
-            (head_x, head_y - 2),
-            (head_x - 2, head_y - 3), (head_x - 1, head_y - 3), (head_x, head_y - 3), (head_x + 1, head_y - 3), (head_x + 2, head_y - 3)
-        ]
-        head = (head_x, head_y)
-        
-    elif orientation == PlaneOrientation.LEFT:
-        # Head at left middle
-        positions = [
-            (head_x, head_y),  # head
-            (head_x + 1, head_y - 2), (head_x + 1, head_y - 1), (head_x + 1, head_y), (head_x + 1, head_y + 1), (head_x + 1, head_y + 2),
-            (head_x + 2, head_y),
-            (head_x + 3, head_y - 1), (head_x + 3, head_y), (head_x + 3, head_y + 1)
-        ]
-        head = (head_x, head_y)
-        
-    else:  # RIGHT
-        # Head at right middle
-        positions = [
-            (head_x, head_y),  # head
-            (head_x - 1, head_y - 1), (head_x - 1, head_y), (head_x - 1, head_y + 1),
-            (head_x - 2, head_y),
-            (head_x - 3, head_y - 2), (head_x - 3, head_y - 1), (head_x - 3, head_y), (head_x - 3, head_y + 1), (head_x - 3, head_y + 2)
-        ]
-        head = (head_x, head_y)
-    
-    return positions, head
+
+    for dx, dy in BASE_PLANE_SHAPE:
+        rdx, rdy = rotate(dx, dy, orientation)
+        positions.append((head_x + rdx, head_y + rdy))
+
+    return positions, (head_x, head_y)
+
 
 class Game:
     def __init__(self, game_id: str):
@@ -169,13 +153,17 @@ class Game:
         
         if cell == "plane":
             self.boards[defender][y][x] = "hit"
+            for plane in self.planes[defender]:
+                if (x, y) in plane.positions:
+                    plane.hit_positions.append((x, y))
+                    break
             return "hit"
         elif cell == "head":
             self.boards[defender][y][x] = "head_hit"
-            # Mark the plane as destroyed
             for plane in self.planes[defender]:
                 if plane.head_position == (x, y):
                     plane.is_destroyed = True
+                    plane.hit_positions.append((x, y))
                     break
             return "head_hit"
         elif cell == "empty":
