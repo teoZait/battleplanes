@@ -9,6 +9,7 @@ import {
   initialGameState,
   createEmptyBoard
 } from './reducers/gameReducer';
+import { getPlanePositions } from './helpers';
 
 interface Plane {
   head_x: number;
@@ -41,40 +42,12 @@ function App() {
 
   const joinGame = (id: string) => setGameId(id);
 
-  const getPlanePositions = (headX: number, headY: number, orient: string): { x: number; y: number }[] => {
-    const positions: { x: number; y: number }[] = [];
-    
-    if (orient === 'up') {
-      positions.push({ x: headX, y: headY });
-      positions.push({ x: headX - 2, y: headY + 1 }, { x: headX - 1, y: headY + 1 }, { x: headX, y: headY + 1 }, { x: headX + 1, y: headY + 1 }, { x: headX + 2, y: headY + 1 });
-      positions.push({ x: headX, y: headY + 2 });
-      positions.push({ x: headX - 1, y: headY + 3 }, { x: headX, y: headY + 3 }, { x: headX + 1, y: headY + 3 });
-    } else if (orient === 'down') {
-      positions.push({ x: headX, y: headY });
-      positions.push({ x: headX - 1, y: headY - 1 }, { x: headX, y: headY - 1 }, { x: headX + 1, y: headY - 1 });
-      positions.push({ x: headX, y: headY - 2 });
-      positions.push({ x: headX - 2, y: headY - 3 }, { x: headX - 1, y: headY - 3 }, { x: headX, y: headY - 3 }, { x: headX + 1, y: headY - 3 }, { x: headX + 2, y: headY - 3 });
-    } else if (orient === 'left') {
-      positions.push({ x: headX, y: headY });
-      positions.push({ x: headX + 1, y: headY - 2 }, { x: headX + 1, y: headY - 1 }, { x: headX + 1, y: headY }, { x: headX + 1, y: headY + 1 }, { x: headX + 1, y: headY + 2 });
-      positions.push({ x: headX + 2, y: headY });
-      positions.push({ x: headX + 3, y: headY - 1 }, { x: headX + 3, y: headY }, { x: headX + 3, y: headY + 1 });
-    } else {
-      positions.push({ x: headX, y: headY });
-      positions.push({ x: headX - 1, y: headY - 1 }, { x: headX - 1, y: headY }, { x: headX - 1, y: headY + 1 });
-      positions.push({ x: headX - 2, y: headY });
-      positions.push({ x: headX - 3, y: headY - 2 }, { x: headX - 3, y: headY - 1 }, { x: headX - 3, y: headY }, { x: headX - 3, y: headY + 1 }, { x: headX - 3, y: headY + 2 });
-    }
-    
-    return positions;
-  };
-
   const handlePlanesPlaced = useCallback(
     (planes: Plane[]) => {
       const board = createEmptyBoard();
 
       planes.forEach(plane => {
-        const positions = getPlanePositions(plane.head_x, plane.head_y, plane.orientation);
+        const {positions} = getPlanePositions(plane.head_x, plane.head_y, plane.orientation);
         positions.forEach((pos, index) => {
           if (index === 0) {
             board[pos.y][pos.x] = 'head' as CellStatus;
@@ -91,7 +64,7 @@ function App() {
 
       // Send each plane to the server
       planes.forEach(plane => {
-        send({ 
+        send({
           type: 'place_plane', 
           head_x: plane.head_x, 
           head_y: plane.head_y, 

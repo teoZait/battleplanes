@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import './PlanePlacement.css';
+import { getPlanePositions } from '../helpers';
 
 interface Plane {
   head_x: number;
@@ -10,36 +11,6 @@ interface Plane {
 interface PlanePlacementProps {
   onPlanesPlaced: (planes: Plane[]) => void;
 }
-
-const BASE_PLANE_SHAPE: [number, number][] = [
-  [0, 0], // head
-  [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1],
-  [0, 2],
-  [-1, 3], [0, 3], [1, 3],
-];
-
-function rotate(dx: number, dy: number, orientation: string): [number, number] {
-  switch (orientation) {
-    case 'up':
-      return [dx, dy];
-    case 'right':
-      return [dy, -dx];
-    case 'down':
-      return [-dx, -dy];
-    case 'left':
-      return [-dy, dx];
-    default:
-      return [dx, dy];
-  }
-}
-
-function getPlanePositions(headX: number, headY: number, orientation: string) {
-  return BASE_PLANE_SHAPE.map(([dx, dy]) => {
-    const [rdx, rdy] = rotate(dx, dy, orientation);
-    return { x: headX + rdx, y: headY + rdy };
-  });
-}
-
 
 type CellStatus = 'empty' | 'plane' | 'head' | 'hover' | 'invalid';
 
@@ -52,17 +23,18 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
   const [hoveredCells, setHoveredCells] = useState<{ x: number; y: number; isValid: boolean }[]>([]);
 
   const previewPlane = async (head_x: number, head_y: number) => {
-    const planePositions = getPlanePositions(head_x, head_y, orientation);
-    const isValid = planePositions.every((pos: any) =>
+    const { positions } = getPlanePositions(head_x, head_y, orientation);
+
+    const isValid = positions.every((pos: any) =>
       pos.x >= 0 &&
       pos.x < 10 &&
       pos.y >= 0 &&
       pos.y < 10 &&
       board[pos.y][pos.x] === 'empty'
     );
-    
+
     setHoveredCells(
-      planePositions.map((pos: { x: number; y: number }) => ({
+      positions.map((pos: { x: number; y: number }) => ({
         x: pos.x,
         y: pos.y,
         isValid,
@@ -164,7 +136,7 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
                       <div className="cockpit">✈️</div>
                     </div>
                   )}
-                  
+
                   {/* Show hover preview */}
                   {isHovered && cell === 'empty' && (
                     <div className={`plane-preview ${isValid ? 'valid' : 'invalid'}`}>
