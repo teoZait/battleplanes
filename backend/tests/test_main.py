@@ -56,9 +56,9 @@ class TestPlanePositions:
         
         expected = [
             (5, 7),  # Head
-            (4, 6), (5, 6), (6, 6),  # Tail
+            (4, 4), (5, 4), (6, 4),  # Tail
             (5, 5),  # Body
-            (3, 4), (4, 4), (5, 4), (6, 4), (7, 4)  # Wings
+            (3, 6), (4, 6), (5, 6), (6, 6), (7, 6)  # Wings
         ]
         
         assert normalize(positions) == normalize(expected), "DOWN orientation positions don't match expected"
@@ -84,9 +84,9 @@ class TestPlanePositions:
         
         expected = [
             (7, 5),  # Head
-            (6, 4), (6, 5), (6, 6),  # Tail
+            (4, 4), (4, 5), (4, 6),  # Tail
             (5, 5),  # Body
-            (4, 3), (4, 4), (4, 5), (4, 6), (4, 7)  # Wings
+            (6, 3), (6, 4), (6, 5), (6, 6), (6, 7)  # Wings
         ]
         
         assert normalize(positions) == normalize(expected), "RIGHT orientation positions don't match expected"
@@ -116,9 +116,9 @@ class TestGamePlacement:
         # Place first plane
         game.place_plane("player1", {"head_x": 5, "head_y": 2, "orientation": "up"})
         # Place second plane
-        game.place_plane("player1", {"head_x": 5, "head_y": 7, "orientation": "down"})
+        game.place_plane("player1", {"head_x": 5, "head_y": 9, "orientation": "down"})
         # Try to place third plane
-        success, message = game.place_plane("player1", {"head_x": 2, "head_y": 5, "orientation": "left"})
+        success, message = game.place_plane("player1", {"head_x": 3, "head_y": 4, "orientation": "right"})
         
         assert success is False, "Should not allow more than 2 planes"
         assert "Already placed 2 planes" in message
