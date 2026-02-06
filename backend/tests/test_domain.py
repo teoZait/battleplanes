@@ -1,10 +1,8 @@
 import pytest
-from main import (
-    get_plane_positions, 
-    PlaneOrientation, 
-    Game,
-    CellStatus
-)
+from domain.game_logic import get_plane_positions
+from domain.value_objects import PlaneOrientation
+from domain.models import Game
+
 
 def normalize(positions):
     """Sort positions for comparison"""
@@ -340,5 +338,5 @@ class TestBoardMasking:
 
 
 if __name__ == "__main__":
-    # Run with: python -m pytest test_main.py -v
+    # Run with: python -m pytest tests/test_domain.py -v
     pytest.main([__file__, "-v"])
