@@ -12,7 +12,7 @@ const rowLabels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 
 const GameBoard = ({ board, onCellClick, isOwnBoard }: GameBoardProps) => {
   return (
-    <div className="game-board">
+    <div className={`game-board ${!isOwnBoard ? 'enemy' : ''}`}>
       {/* Top-left corner (empty) */}
       <div className="board-row label-row">
         <div className="label-corner"></div>
@@ -33,7 +33,7 @@ const GameBoard = ({ board, onCellClick, isOwnBoard }: GameBoardProps) => {
           {row.map((cell, x) => (
             <div
               key={`${x}-${y}`}
-              className={`cell ${cell} ${!isOwnBoard ? 'clickable' : ''}`}
+              className={`cell ${cell} ${!isOwnBoard ? 'clickable enemy' : ''}`}
               onClick={() => onCellClick(x, y)}
             >
               {(cell === 'plane' as CellStatus) && isOwnBoard && (

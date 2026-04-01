@@ -63,6 +63,17 @@
   background: linear-gradient(135deg, rgba(0, 191, 255, 0.2) 0%, rgba(0, 160, 215, 0.25) 100%);
 }
 
+/* Enemy airspace styling - distinct red hue */
+.cell.enemy {
+  background: linear-gradient(135deg, rgba(255, 89, 97, 0.15) 0%, rgba(230, 69, 78, 0.2) 100%);
+  border-color: rgba(255, 89, 97, 0.4);
+}
+
+.cell.enemy:hover {
+  background: rgba(255, 89, 97, 0.35);
+  box-shadow: 0 0 15px rgba(255, 89, 97, 0.6);
+}
+
 .cell.ship {
   background: linear-gradient(135deg, #0a192f 0%, #0d264d 100%);
   border-color: rgba(0, 210, 255, 0.5);
@@ -123,6 +134,12 @@
   background: linear-gradient(135deg, #ff3366 0%, #cc0033 100%);
   animation: hit-pulse 0.5s ease-out;
   box-shadow: inset 0 0 20px rgba(255, 51, 102, 0.4);
+}
+
+/* Enemy airspace hit styling */
+.cell.enemy.hit {
+  background: linear-gradient(135deg, #ff5c69 0%, #e74c3c 100%);
+  border-color: rgba(255, 92, 105, 0.8);
 }
 
 @keyframes hit-pulse {
@@ -201,6 +218,11 @@
   animation: miss-splash 0.5s ease-out;
 }
 
+/* Enemy airspace miss styling */
+.cell.enemy.miss {
+  background: linear-gradient(135deg, rgba(255, 138, 156, 0.4) 0%, rgba(255, 110, 134, 0.5) 100%);
+}
+
 @keyframes miss-splash {
   0% {
     transform: scale(1);
@@ -221,6 +243,12 @@
   text-shadow: 0 0 8px rgba(116, 215, 255, 0.6);
 }
 
+/* Enemy airspace miss marker styling */
+.cell.enemy .miss-marker {
+  color: #ffb6c1;
+  text-shadow: 0 0 8px rgba(255, 182, 193, 0.6);
+}
+
 @keyframes bob {
   0%, 100% {
     transform: translateY(0);
@@ -236,6 +264,11 @@
   height: 100%;
   background: radial-gradient(circle, rgba(0, 210, 255, 0.4) 0%, transparent 70%);
   animation: splash-fade 0.8s ease-out;
+}
+
+/* Enemy airspace splash styling */
+.cell.enemy .splash {
+  background: radial-gradient(circle, rgba(255, 138, 156, 0.4) 0%, transparent 70%);
 }
 
 @keyframes splash-fade {
@@ -268,6 +301,13 @@
   color: #00d2ff;
   font-weight: bold;
   text-shadow: 0 0 8px rgba(0, 210, 255, 0.6);
+}
+
+/* Enemy airspace label styling */
+.game-board.enemy .label-corner,
+.game-board.enemy .label-cell {
+  color: #ff3366;
+  text-shadow: 0 0 10px rgba(255, 51, 102, 0.8);
 }
 
 .row-label {
