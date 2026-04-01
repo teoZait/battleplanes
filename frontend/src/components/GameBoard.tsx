@@ -7,11 +7,29 @@ interface GameBoardProps {
   isOwnBoard: boolean;
 }
 
+const columnLabels = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+const rowLabels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+
 const GameBoard = ({ board, onCellClick, isOwnBoard }: GameBoardProps) => {
   return (
     <div className="game-board">
+      {/* Top-left corner (empty) */}
+      <div className="board-row label-row">
+        <div className="label-corner"></div>
+        {columnLabels.map((colLabel, x) => (
+          <div key={`col-${x}`} className="label-cell column-label">
+            {colLabel}
+          </div>
+        ))}
+      </div>
+      
+      {/* Grid rows with row labels */}
       {board.map((row, y) => (
         <div key={y} className="board-row">
+          {/* Row label on the left */}
+          <div className="label-cell row-label">
+            {rowLabels[y]}
+          </div>
           {row.map((cell, x) => (
             <div
               key={`${x}-${y}`}

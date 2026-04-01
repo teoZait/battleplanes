@@ -249,6 +249,47 @@
   }
 }
 
+/* Label styling (default - larger screens) */
+.label-corner {
+  width: 30px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #00d2ff;
+  font-weight: bold;
+  text-shadow: 0 0 8px rgba(0, 210, 255, 0.6);
+}
+
+.label-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #00d2ff;
+  font-weight: bold;
+  text-shadow: 0 0 8px rgba(0, 210, 255, 0.6);
+}
+
+.row-label {
+  width: 30px;
+  height: 40px;
+}
+
+.column-label {
+  width: 40px;
+  height: 30px;
+}
+
+/* Spacing between labels and grid */
+.board-row.label-row {
+  margin-bottom: 8px;
+}
+
+.board-row .label-cell.row-label {
+  margin-right: 8px;
+}
+
+/* Responsive adjustments for smaller screens */
 @media (max-width: 768px) {
   .cell {
     width: 30px;
@@ -258,5 +299,26 @@
   .fire,
   .miss-marker {
     font-size: 16px;
+  }
+
+  /* Label styling for smaller screens */
+  .label-corner,
+  .row-label {
+    width: 25px;
+    height: 30px;
+  }
+
+  .column-label {
+    width: 30px;
+    height: 25px;
+  }
+
+  /* Adjust spacing for smaller screens */
+  .board-row.label-row {
+    margin-bottom: 6px;
+  }
+
+  .board-row .label-cell.row-label {
+    margin-right: 6px;
   }
 }
