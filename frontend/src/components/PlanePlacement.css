@@ -12,37 +12,66 @@
 
 .placement-info h2 {
   margin-bottom: 10px;
+  color: #e0f0ff;
+  font-size: 2rem;
+  text-shadow: 0 0 15px rgba(0, 210, 255, 0.4);
 }
 
 .placement-info p {
   font-size: 1.2rem;
   margin: 10px 0;
+  color: #74d7ff;
 }
 
 .placement-info .instruction {
   font-size: 0.9rem;
   font-style: italic;
   opacity: 0.8;
+  color: #4a6b8c;
 }
 
 .btn-rotate {
-  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  background: linear-gradient(135deg, #00d2ff 0%, #00a0d7 100%);
   color: white;
   margin-top: 10px;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: bold;
+  transition: all 0.3s ease;
+  box-shadow: 
+    0 4px 15px rgba(0, 210, 255, 0.3),
+    inset 0 0 10px rgba(255, 255, 255, 0.1);
 }
 
 .btn-rotate:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 
+    0 8px 25px rgba(0, 210, 255, 0.6),
+    inset 0 0 15px rgba(255, 255, 255, 0.15);
 }
 
 .placement-board {
   display: inline-block;
-  border: 3px solid #2c3e50;
-  border-radius: 8px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-  background: linear-gradient(135deg, #1a4d7a 0%, #2c5f8d 100%);
-  padding: 5px;
+  border: 2px solid #00d2ff;
+  border-radius: 12px;
+  box-shadow: 
+    0 0 30px rgba(0, 210, 255, 0.3),
+    inset 0 0 20px rgba(0, 210, 255, 0.1);
+  background: linear-gradient(135deg, #0a192f 0%, #0d264d 100%);
+  padding: 8px;
+  position: relative;
+}
+
+.placement-board::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border-radius: 14px;
+  background: linear-gradient(45deg, transparent 30%, rgba(0, 210, 255, 0.3) 50%, transparent 70%);
+  z-index: -1;
 }
 
 .placement-board .cell {
@@ -50,13 +79,14 @@
 }
 
 .placement-board .cell.hovered-valid {
-  background: rgba(46, 204, 113, 0.3) !important;
-  border: 2px solid #27ae60;
+  background: rgba(0, 210, 255, 0.4) !important;
+  border-color: #74d7ff;
+  box-shadow: inset 0 0 15px rgba(0, 210, 255, 0.3);
 }
 
 .placement-board .cell.hovered-invalid {
-  background: rgba(231, 76, 60, 0.3) !important;
-  border: 2px solid #c0392b;
+  background: rgba(255, 51, 102, 0.3) !important;
+  border-color: #ff3366;
 }
 
 /* Plane preview styles */
@@ -69,23 +99,24 @@
 }
 
 .plane-preview.valid .preview-body {
-  background: linear-gradient(135deg, rgba(149, 165, 166, 0.6) 0%, rgba(127, 140, 141, 0.6) 50%, rgba(149, 165, 166, 0.6) 100%);
-  border: 2px solid rgba(46, 204, 113, 0.8);
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.6) 0%, rgba(0, 160, 215, 0.6) 50%, rgba(0, 210, 255, 0.6) 100%);
+  border: 2px solid #74d7ff;
+  box-shadow: inset 0 0 10px rgba(0, 210, 255, 0.3);
 }
 
 .plane-preview.valid .preview-head .preview-body {
-  background: linear-gradient(135deg, rgba(230, 126, 34, 0.6) 0%, rgba(211, 84, 0, 0.6) 50%, rgba(230, 126, 34, 0.6) 100%);
-  border: 2px solid rgba(46, 204, 113, 0.8);
+  background: linear-gradient(135deg, rgba(255, 184, 77, 0.6) 0%, rgba(255, 152, 50, 0.6) 50%, rgba(255, 184, 77, 0.6) 100%);
+  border: 2px solid #ffb84d;
 }
 
 .plane-preview.invalid .preview-body {
-  background: linear-gradient(135deg, rgba(149, 165, 166, 0.4) 0%, rgba(127, 140, 141, 0.4) 50%, rgba(149, 165, 166, 0.4) 100%);
-  border: 2px solid rgba(231, 76, 60, 0.8);
+  background: linear-gradient(135deg, rgba(255, 51, 102, 0.4) 0%, rgba(255, 30, 70, 0.4) 50%, rgba(255, 51, 102, 0.4) 100%);
+  border: 2px solid #ff3366;
 }
 
 .plane-preview.invalid .preview-head .preview-body {
-  background: linear-gradient(135deg, rgba(230, 126, 34, 0.4) 0%, rgba(211, 84, 0, 0.4) 50%, rgba(230, 126, 34, 0.4) 100%);
-  border: 2px solid rgba(231, 76, 60, 0.8);
+  background: linear-gradient(135deg, rgba(255, 184, 77, 0.4) 0%, rgba(255, 152, 50, 0.4) 50%, rgba(255, 184, 77, 0.4) 100%);
+  border: 2px solid #ffb84d;
 }
 
 .preview-segment,
@@ -122,15 +153,15 @@
 .plane-segment .plane-body {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 50%, #95a5a6 100%);
-  border: 2px solid #34495e;
+  background: linear-gradient(135deg, #0d264d 0%, #0a192f 50%, #0d264d 100%);
+  border: 2px solid rgba(0, 210, 255, 0.5);
   border-radius: 3px;
   position: relative;
 }
 
 .plane-segment.head .plane-body {
-  background: linear-gradient(135deg, #e67e22 0%, #d35400 50%, #e67e22 100%);
-  border: 2px solid #c0392b;
+  background: linear-gradient(135deg, #ffb84d 0%, #ff9827 50%, #ffb84d 100%);
+  border: 2px solid #ffb84d;
 }
 
 .cockpit {
@@ -140,18 +171,23 @@
   transform: translate(-50%, -50%);
   font-size: 20px;
   z-index: 10;
+  color: #e0f0ff;
+  text-shadow: 0 0 8px rgba(0, 210, 255, 0.6);
 }
 
 .plane-list {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(0, 30, 69, 0.5);
   padding: 20px;
-  border-radius: 10px;
+  border-radius: 12px;
   backdrop-filter: blur(10px);
   min-width: 250px;
+  border: 1px solid rgba(0, 210, 255, 0.2);
 }
 
 .plane-list h3 {
   margin-bottom: 15px;
+  color: #74d7ff;
+  text-shadow: 0 0 8px rgba(116, 215, 255, 0.4);
 }
 
 .plane-list ul {
@@ -160,36 +196,39 @@
 }
 
 .plane-list li {
-  padding: 10px;
+  padding: 12px;
   margin: 5px 0;
-  border-radius: 5px;
-  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  background: rgba(0, 210, 255, 0.1);
   transition: all 0.3s ease;
+  color: #e0f0ff;
 }
 
 .plane-list li.current {
-  background: rgba(52, 152, 219, 0.3);
-  border: 2px solid #3498db;
+  background: rgba(0, 210, 255, 0.3);
+  border: 2px solid #74d7ff;
   font-weight: bold;
+  box-shadow: inset 0 0 10px rgba(0, 210, 255, 0.2);
 }
 
 .plane-list li.placed {
-  background: rgba(46, 204, 113, 0.3);
-  border: 2px solid #27ae60;
-  color: #2ecc71;
+  background: rgba(0, 210, 255, 0.2);
+  border: 2px solid #74d7ff;
+  color: #74d7ff;
 }
 
 .plane-info {
   margin-top: 15px;
   padding: 10px;
-  background: rgba(230, 126, 34, 0.2);
-  border-radius: 5px;
-  border-left: 3px solid #e67e22;
+  background: rgba(255, 184, 77, 0.15);
+  border-radius: 8px;
+  border-left: 3px solid #ffb84d;
 }
 
 .plane-info p {
   margin: 0;
   font-size: 0.9rem;
+  color: #e0f0ff;
 }
 
 .placement-actions {
@@ -198,6 +237,10 @@
 }
 
 @media (max-width: 768px) {
+  .placement-info h2 {
+    font-size: 1.5rem;
+  }
+
   .placement-info p {
     font-size: 1rem;
   }
