@@ -40,7 +40,7 @@ const GameInfo = ({ gameState, playerId, currentTurn, message, winner, gameId }:
           <span className="label">Status:</span>
           <span className={`status ${gameState}`}>
             {gameState === 'waiting' && '⏳ Waiting...'}
-            {gameState === 'placing' && '🎯 Placing Ships'}
+            {gameState === 'placing' && '🎯 Placing Planes'}
             {gameState === 'playing' && '⚔️ Battle!'}
             {gameState === 'finished' && '🏁 Game Over'}
           </span>

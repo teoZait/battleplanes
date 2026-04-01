@@ -1,5 +1,13 @@
 import { CellStatus, ServerMessage } from '../hooks/UseGameWebSocket';
 
+// Helper to convert numeric coordinates to proper labels (e.g., x=3, y=2 -> "C4")
+// In the grid: board[y][x], where y is row index (A-J) and x is column index (1-10)
+const getCoordinateLabel = (x: number, y: number): string => {
+  const columnLabels = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+  const rowLabels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+  return `${rowLabels[y]}${columnLabels[x]}`;
+};
+
 export type GameState = 'waiting' | 'placing' | 'playing' | 'finished';
 
 export interface GameUIState {
@@ -78,21 +86,22 @@ export function gameReducer(
       newBoard[action.y][action.x] = action.result as CellStatus;
 
       let message = '';
+      const coordLabel = getCoordinateLabel(action.x, action.y);
       if (action.is_attacker) {
         if (action.result === 'head_hit') {
-          message = `💥 COCKPIT HIT! Enemy plane destroyed at (${action.x}, ${action.y})!`;
+          message = `💥 COCKPIT HIT! Enemy plane destroyed at ${coordLabel}!`;
         } else if (action.result === 'hit') {
-          message = `🔥 Hit at (${action.x}, ${action.y}) - but plane still flying!`;
+          message = `🔥 Hit at ${coordLabel} - but plane still flying!`;
         } else {
-          message = `💧 Miss at (${action.x}, ${action.y})`;
+          message = `💧 Miss at ${coordLabel}`;
         }
       } else {
         if (action.result === 'head_hit') {
-          message = `💥 Your cockpit was hit at (${action.x}, ${action.y})! Plane destroyed!`;
+          message = `💥 Your cockpit was hit at ${coordLabel}! Plane destroyed!`;
         } else if (action.result === 'hit') {
-          message = `🔥 Your plane took damage at (${action.x}, ${action.y})`;
+          message = `🔥 Your plane took damage at ${coordLabel}`;
         } else {
-          message = `💧 Opponent missed at (${action.x}, ${action.y})`;
+          message = `💧 Opponent missed at ${coordLabel}`;
         }
       }
 
