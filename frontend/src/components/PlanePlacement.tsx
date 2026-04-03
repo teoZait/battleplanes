@@ -21,6 +21,7 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
   const [placedPlanes, setPlacedPlanes] = useState<Plane[]>([]);
   const [orientation, setOrientation] = useState<'up' | 'down' | 'left' | 'right'>('up');
   const [hoveredCells, setHoveredCells] = useState<{ x: number; y: number; isValid: boolean }[]>([]);
+  const [shaking, setShaking] = useState(false);
 
   const previewPlane = async (head_x: number, head_y: number) => {
     const { positions } = getPlanePositions(head_x, head_y, orientation);
@@ -47,6 +48,8 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
 
     const invalidCells = hoveredCells.filter((cell: { isValid: boolean }) => !cell.isValid);
     if (invalidCells.length > 0) {
+      setShaking(true);
+      setTimeout(() => setShaking(false), 500);
       return;
     }
 
@@ -111,7 +114,7 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
         </button>
       </div>
 
-      <div className="placement-board">
+      <div className={`placement-board ${shaking ? 'shake' : ''}`}>
         {board.map((row, y) => (
           <div key={y} className="board-row">
             {row.map((cell, x) => {
@@ -133,7 +136,7 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
                   {cell === 'head' && (
                     <div className="plane-segment head">
                       <div className="plane-body"></div>
-                      <div className="cockpit">✈️</div>
+                      <div className="cockpit"></div>
                     </div>
                   )}
 
@@ -143,7 +146,7 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
                       {isHead ? (
                         <div className="preview-head">
                           <div className="preview-body"></div>
-                          <div className="preview-cockpit">✈️</div>
+                          <div className="preview-cockpit"></div>
                         </div>
                       ) : (
                         <div className="preview-segment">
@@ -170,7 +173,7 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
           </li>
         </ul>
         <div className="plane-info">
-          <p>💡 Tip: Hit the cockpit (✈️) to destroy a plane!</p>
+          <p>💡 Tip: Hit the cockpit to destroy a plane!</p>
         </div>
       </div>
 

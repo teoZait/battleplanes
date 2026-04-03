@@ -17,13 +17,13 @@ interface Plane {
   orientation: 'up' | 'down' | 'left' | 'right';
 }
 
-const API_URL = 'http://localhost:8000';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 function App() {
   const [gameId, setGameId] = useState<string | null>(null);
   const [state, dispatch] = useReducer(gameReducer, initialGameState);
 
-  const { send } = useGameWebSocket({
+  const { send, connectionStatus } = useGameWebSocket({
     gameId,
     onOpen: () => {
       dispatch({ type: 'error', message: 'Connected to game' });
@@ -142,6 +142,7 @@ function App() {
             message={state.message}
             winner={state.winner}
             gameId={gameId}
+            connectionStatus={connectionStatus}
           />
 
           {state.gameState === 'placing' && (
@@ -169,6 +170,7 @@ function App() {
                     handleCellClick(x, y, false)
                   }
                   isOwnBoard={false}
+                  isMyTurn={state.gameState === 'playing' ? state.playerId === state.currentTurn : undefined}
                 />
               </div>
             </div>

@@ -126,6 +126,16 @@ export function gameReducer(
         message: `Game Over! Winner: ${action.winner}`,
       };
 
+    case 'game_resumed':
+      return {
+        ...state,
+        gameState: 'playing',
+        ownBoard: action.own_board,
+        opponentBoard: action.opponent_board,
+        currentTurn: action.current_turn,
+        message: 'Reconnected to game',
+      };
+
     case 'player_disconnected':
       return {
         ...state,

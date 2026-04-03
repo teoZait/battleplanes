@@ -1,4 +1,5 @@
 import { GameState } from '.././reducers/gameReducer';
+import { ConnectionStatus } from '../hooks/UseGameWebSocket';
 import './GameInfo.css';
 
 interface GameInfoProps {
@@ -8,9 +9,10 @@ interface GameInfoProps {
   message: string;
   winner: string | null;
   gameId: string | null;
+  connectionStatus: ConnectionStatus;
 }
 
-const GameInfo = ({ gameState, playerId, currentTurn, message, winner, gameId }: GameInfoProps) => {
+const GameInfo = ({ gameState, playerId, currentTurn, message, winner, gameId, connectionStatus }: GameInfoProps) => {
   const isMyTurn = playerId === currentTurn;
 
   const copyGameId = () => {
@@ -71,6 +73,13 @@ const GameInfo = ({ gameState, playerId, currentTurn, message, winner, gameId }:
           </div>
         )}
       </div>
+
+      {connectionStatus !== 'connected' && connectionStatus !== 'disconnected' && (
+        <div className={`connection-status ${connectionStatus}`}>
+          {connectionStatus === 'connecting' && 'Connecting...'}
+          {connectionStatus === 'reconnecting' && 'Connection lost. Reconnecting...'}
+        </div>
+      )}
 
       {message && (
         <div className="message-box">

@@ -1,20 +1,59 @@
 """
 FastAPI Application - API Layer / Presentation Layer
 """
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+import os
+import time
+from collections import defaultdict
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from application.game_service import GameService
+from application.schemas import parse_client_message
 
 app = FastAPI(title="Warplanes API")
 
-# CORS middleware
+# CORS middleware - restrict to configured origins
+allowed_origins = os.environ.get(
+    "CORS_ALLOWED_ORIGINS",
+    "http://localhost:3000,http://localhost:5173,http://localhost:80,http://localhost"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Rate limiting
+RATE_LIMIT_WINDOW = 60  # seconds
+RATE_LIMIT_MAX_REQUESTS = 30  # per window
+_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    if request.url.path == "/":  # skip health check
+        return await call_next(request)
+
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    window_start = now - RATE_LIMIT_WINDOW
+
+    # Clean old entries and add current request
+    timestamps = _rate_limit_store[client_ip]
+    _rate_limit_store[client_ip] = [t for t in timestamps if t > window_start]
+    _rate_limit_store[client_ip].append(now)
+
+    if len(_rate_limit_store[client_ip]) > RATE_LIMIT_MAX_REQUESTS:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Too many requests. Try again later."}
+        )
+
+    return await call_next(request)
 
 # Application service (singleton)
 game_service = GameService()
@@ -62,16 +101,22 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
     try:
         while True:
             data = await websocket.receive_json()
-            # TODO: schema here ?!
-            
-            if data["type"] == "place_plane":
-                await game_service.handle_plane_placement(game_id, player_id, data)
-            
-            elif data["type"] == "attack":
-                x, y = data["x"], data["y"]
-                await game_service.handle_attack(game_id, player_id, x, y)
-            
-            elif data["type"] == "get_boards":
+            message = parse_client_message(data)
+
+            if message is None:
+                await game_service.connection_manager.send_to_player(game_id, player_id, {
+                    "type": "error",
+                    "message": "Invalid message format"
+                })
+                continue
+
+            if message.type == "place_plane":
+                await game_service.handle_plane_placement(game_id, player_id, message.model_dump())
+
+            elif message.type == "attack":
+                await game_service.handle_attack(game_id, player_id, message.x, message.y)
+
+            elif message.type == "get_boards":
                 game = game_service.get_game(game_id)
                 if game:
                     await game_service.connection_manager.send_to_player(game_id, player_id, {

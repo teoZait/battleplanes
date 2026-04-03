@@ -57,7 +57,10 @@ class Game:
             return "player1"
         elif self.players["player2"] is None:
             self.players["player2"] = websocket
-            self.state = GameState.PLACING
+            # Only advance to PLACING if we're still in WAITING (fresh game).
+            # On reconnection the game may already be in PLAYING/FINISHED.
+            if self.state == GameState.WAITING:
+                self.state = GameState.PLACING
             return "player2"
         return None
 

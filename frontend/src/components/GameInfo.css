@@ -209,6 +209,27 @@
   color: #e0f0ff;
 }
 
+.connection-status {
+  padding: 10px 25px;
+  border-radius: 8px;
+  font-weight: bold;
+  font-size: 0.95rem;
+  text-align: center;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.connection-status.connecting {
+  background: rgba(255, 184, 77, 0.15);
+  border: 1px solid rgba(255, 184, 77, 0.4);
+  color: #ffb84d;
+}
+
+.connection-status.reconnecting {
+  background: rgba(255, 51, 102, 0.15);
+  border: 1px solid rgba(255, 51, 102, 0.4);
+  color: #ff3366;
+}
+
 @media (max-width: 768px) {
   .info-card {
     flex-direction: column;

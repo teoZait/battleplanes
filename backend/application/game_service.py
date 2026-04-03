@@ -57,21 +57,29 @@ class GameService:
             return None
         
         await self.connection_manager.connect(game_id, player_id, websocket)
-        
+
         # Send player assignment
         await self.connection_manager.send_to_player(game_id, player_id, {
             "type": "player_assigned",
             "player_id": player_id,
             "game_state": game.state
         })
-        
+
+        # If game is already in progress, send board state so the client can resume
+        if game.state in (GameState.PLAYING, GameState.FINISHED):
+            await self.connection_manager.send_to_player(game_id, player_id, {
+                "type": "game_resumed",
+                "own_board": game.boards[player_id],
+                "opponent_board": game.get_masked_board(player_id),
+                "current_turn": game.current_turn,
+            })
         # Notify both players if game is ready for placement
-        if game.state == GameState.PLACING:
+        elif game.state == GameState.PLACING:
             await self.connection_manager.broadcast_to_game(game_id, {
                 "type": "game_ready",
                 "message": "Both players connected. Place your planes! (2 planes each)"
             })
-        
+
         return player_id
     
     async def handle_plane_placement(self, game_id: str, player_id: str, plane_data: dict):
@@ -167,6 +175,12 @@ class GameService:
     async def handle_player_disconnection(self, game_id: str, player_id: str):
         """Handle player disconnection"""
         self.connection_manager.disconnect(game_id, player_id)
+
+        # Clear the player slot so a reconnecting client can reclaim it
+        game = self.get_game(game_id)
+        if game:
+            game.players[player_id] = None
+
         await self.connection_manager.broadcast_to_game(game_id, {
             "type": "player_disconnected",
             "player_id": player_id

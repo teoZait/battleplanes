@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
 export type CellStatus = 'empty' | 'plane' | 'head' | 'hit' | 'miss' | 'head_hit';
 
@@ -10,12 +10,21 @@ export type ServerMessage =
   | { type: 'attack_result'; x: number; y: number; result: string; is_attacker: boolean }
   | { type: 'turn_changed'; current_turn: string }
   | { type: 'game_over'; winner: string }
+  | { type: 'game_resumed'; own_board: CellStatus[][]; opponent_board: CellStatus[][]; current_turn: string }
   | { type: 'player_disconnected' }
   | { type: 'error'; message: string };
 
 export type ClientMessage =
   | { type: 'place_plane'; head_x: number; head_y: number; orientation: string }
   | { type: 'attack'; x: number; y: number };
+
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const WS_URL = API_URL.replace('http', 'ws');
+
+const BACKOFF_BASE = 1000;
+const BACKOFF_MAX = 30000;
 
 export function useGameWebSocket(params: {
   gameId: string | null;
@@ -25,39 +34,78 @@ export function useGameWebSocket(params: {
   onError?: (msg: string) => void;
 }) {
   const wsRef = useRef<WebSocket | null>(null);
-  const API_URL = 'http://localhost:8000';
-  const WS_URL = API_URL.replace('http', 'ws');
+  const retryCountRef = useRef(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intentionalCloseRef = useRef(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
 
-  useEffect(() => {
+  const connect = useCallback(() => {
     if (!params.gameId) return;
+
+    const isReconnect = retryCountRef.current > 0;
+    setConnectionStatus(isReconnect ? 'reconnecting' : 'connecting');
 
     const ws = new WebSocket(`${WS_URL}/ws/${params.gameId}`);
     wsRef.current = ws;
 
-    ws.onopen = () => params.onOpen?.();
+    ws.onopen = () => {
+      retryCountRef.current = 0;
+      setConnectionStatus('connected');
+      params.onOpen?.();
+    };
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data) as ServerMessage;
       params.onMessage(data);
     };
 
-    ws.onerror = () => params.onError?.('WebSocket error');
+    ws.onerror = () => {
+      params.onError?.('WebSocket error');
+    };
 
     ws.onclose = () => {
       wsRef.current = null;
-      params.onClose?.();
-    };
 
-    return () => ws.close();
+      if (intentionalCloseRef.current) {
+        setConnectionStatus('disconnected');
+        params.onClose?.();
+        return;
+      }
+
+      // Exponential backoff reconnection
+      const delay = Math.min(BACKOFF_BASE * Math.pow(2, retryCountRef.current), BACKOFF_MAX);
+      retryCountRef.current += 1;
+      setConnectionStatus('reconnecting');
+
+      retryTimerRef.current = setTimeout(() => {
+        connect();
+      }, delay);
+    };
   }, [params.gameId]);
 
-  const send = (payload: ClientMessage) => {
+  useEffect(() => {
+    intentionalCloseRef.current = false;
+    retryCountRef.current = 0;
+
+    connect();
+
+    return () => {
+      intentionalCloseRef.current = true;
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+      wsRef.current?.close();
+    };
+  }, [params.gameId]);
+
+  const send = useCallback((payload: ClientMessage) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(payload));
     }
-  };
+  }, []);
 
-  return { send };
+  return { send, connectionStatus };
 }
 
 export default useGameWebSocket;
