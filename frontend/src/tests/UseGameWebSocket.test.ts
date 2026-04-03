@@ -63,10 +63,13 @@ beforeEach(() => {
   MockWebSocket.instances = [];
   (globalThis as any).WebSocket = MockWebSocket;
   vi.useFakeTimers();
+  // Zero jitter by default so existing exact-timing tests pass
+  vi.spyOn(Math, 'random').mockReturnValue(0);
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
   (globalThis as any).WebSocket = OriginalWebSocket;
 });
 
@@ -489,6 +492,84 @@ describe('useGameWebSocket', () => {
 
       expect(game2Connections.length).toBeGreaterThanOrEqual(1);
       expect(game1Connections).toHaveLength(0);
+    });
+
+    it('should stop reconnecting after max retries (10)', () => {
+      const onMessage = vi.fn();
+      const onClose = vi.fn();
+      const { result } = renderHook(() =>
+        useGameWebSocket({ gameId: 'game-123', onMessage, onClose })
+      );
+
+      act(() => latestWS().simulateOpen());
+
+      // Exhaust all 10 retries
+      for (let i = 0; i < 10; i++) {
+        act(() => latestWS().simulateUnexpectedClose());
+        act(() => vi.advanceTimersByTime(30000)); // always enough
+      }
+
+      const countAfterRetries = MockWebSocket.instances.length;
+
+      // 11th close should give up — no more connections
+      act(() => latestWS().simulateUnexpectedClose());
+
+      // Advance plenty of time
+      act(() => vi.advanceTimersByTime(60000));
+
+      expect(MockWebSocket.instances).toHaveLength(countAfterRetries);
+      expect(result.current.connectionStatus).toBe('disconnected');
+      expect(onClose).toHaveBeenCalled();
+    });
+
+    it('should reset max retry counter on successful reconnection', () => {
+      const onMessage = vi.fn();
+      const { result } = renderHook(() =>
+        useGameWebSocket({ gameId: 'game-123', onMessage })
+      );
+
+      act(() => latestWS().simulateOpen());
+
+      // Use up 9 retries (one short of max)
+      for (let i = 0; i < 9; i++) {
+        act(() => latestWS().simulateUnexpectedClose());
+        act(() => vi.advanceTimersByTime(30000));
+      }
+
+      // Successful reconnect resets counter
+      act(() => latestWS().simulateOpen());
+
+      // Should be able to retry 10 more times
+      for (let i = 0; i < 10; i++) {
+        act(() => latestWS().simulateUnexpectedClose());
+        act(() => vi.advanceTimersByTime(30000));
+      }
+
+      // 11th failure after reset should give up
+      act(() => latestWS().simulateUnexpectedClose());
+      act(() => vi.advanceTimersByTime(60000));
+
+      expect(result.current.connectionStatus).toBe('disconnected');
+    });
+
+    it('should add jitter to backoff delay', () => {
+      // Override Math.random to return 1 → max jitter (50% of base delay)
+      vi.spyOn(Math, 'random').mockReturnValue(1);
+
+      const onMessage = vi.fn();
+      renderHook(() =>
+        useGameWebSocket({ gameId: 'game-123', onMessage })
+      );
+
+      act(() => latestWS().simulateOpen());
+      act(() => latestWS().simulateUnexpectedClose());
+
+      // Base delay = 1000ms, jitter = 1 * 0.5 * 1000 = 500ms, total = 1500ms
+      act(() => vi.advanceTimersByTime(1000));
+      expect(MockWebSocket.instances).toHaveLength(1); // not yet at 1000ms
+
+      act(() => vi.advanceTimersByTime(500));
+      expect(MockWebSocket.instances).toHaveLength(2); // reconnects at 1500ms
     });
   });
 });

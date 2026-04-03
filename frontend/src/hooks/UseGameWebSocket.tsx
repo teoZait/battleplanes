@@ -25,6 +25,7 @@ const WS_URL = API_URL.replace('http', 'ws');
 
 const BACKOFF_BASE = 1000;
 const BACKOFF_MAX = 30000;
+const BACKOFF_MAX_RETRIES = 10;
 
 export function useGameWebSocket(params: {
   gameId: string | null;
@@ -81,8 +82,17 @@ export function useGameWebSocket(params: {
         return;
       }
 
-      // Exponential backoff reconnection
-      const delay = Math.min(BACKOFF_BASE * Math.pow(2, retryCountRef.current), BACKOFF_MAX);
+      // Give up after max retries to avoid thundering herd
+      if (retryCountRef.current >= BACKOFF_MAX_RETRIES) {
+        setConnectionStatus('disconnected');
+        params.onClose?.();
+        return;
+      }
+
+      // Exponential backoff with jitter to spread reconnection attempts
+      const baseDelay = Math.min(BACKOFF_BASE * Math.pow(2, retryCountRef.current), BACKOFF_MAX);
+      const jitter = Math.random() * 0.5 * baseDelay;
+      const delay = baseDelay + jitter;
       retryCountRef.current += 1;
       setConnectionStatus('reconnecting');
 
