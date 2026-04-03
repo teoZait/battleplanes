@@ -54,20 +54,6 @@ class Game:
         self.created_at: float = time.time()
         self.finished_at: Optional[float] = None
 
-    def add_player(self, websocket) -> Optional[str]:
-        """Add a player to the game. Returns player_id or None if full."""
-        if self.players["player1"] is None:
-            self.players["player1"] = websocket
-            return "player1"
-        elif self.players["player2"] is None:
-            self.players["player2"] = websocket
-            # Only advance to PLACING if we're still in WAITING (fresh game).
-            # On reconnection the game may already be in PLAYING/FINISHED.
-            if self.state == GameState.WAITING:
-                self.state = GameState.PLACING
-            return "player2"
-        return None
-
     def place_plane(self, player_id: str, plane_data: Dict) -> Tuple[bool, str]:
         """
         Place a plane for a player.

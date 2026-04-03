@@ -4,6 +4,7 @@ Tests for the GameService application layer.
 Uses mock WebSocket objects to test the service in isolation,
 without going through HTTP/ASGI.
 """
+import asyncio
 import pytest
 from application.game_service import GameService
 from domain.value_objects import GameState
@@ -72,7 +73,7 @@ async def _setup_playing(service: GameService):
         await service.handle_plane_placement(game_id, pid, PLANE_1)
         await service.handle_plane_placement(game_id, pid, PLANE_2)
 
-    assert service.get_game(game_id).state == GameState.PLAYING
+    assert service.get_game(game_id).state == "playing"
     ws1.clear()
     ws2.clear()
     return game_id, ws1, ws2
@@ -103,8 +104,10 @@ class TestGameCreation:
         gid = await service.create_game()
         info = service.get_game_info(gid)
         assert info["id"] == gid
-        assert info["state"] == GameState.WAITING
-        assert info["players"]["player1"] is False
+        assert info["state"] == "waiting"
+        # #18 — must not expose player slots or current_turn
+        assert "players" not in info
+        assert "current_turn" not in info
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +126,7 @@ class TestPlayerConnection:
         assert ws.accepted
         msg = ws.find("player_assigned")
         assert msg["player_id"] == "player1"
-        assert msg["game_state"] == GameState.WAITING
+        assert msg["game_state"] == "waiting"
 
     @pytest.mark.asyncio
     async def test_first_player_gets_session_token(self, service):
@@ -143,7 +146,7 @@ class TestPlayerConnection:
         ws1, ws2 = await _connect_two(service, gid)
 
         p2_msg = ws2.find("player_assigned")
-        assert p2_msg["game_state"] == GameState.PLACING
+        assert p2_msg["game_state"] == "placing"
 
         assert ws1.find("game_ready") is not None
         assert ws2.find("game_ready") is not None
@@ -266,7 +269,7 @@ class TestPlacement:
     async def test_game_starts_when_both_ready(self, service):
         gid, ws1, ws2 = await _setup_playing(service)
         game = service.get_game(gid)
-        assert game.state == GameState.PLAYING
+        assert game.state == "playing"
         assert game.current_turn == "player1"
 
 
@@ -361,7 +364,7 @@ class TestDisconnect:
         assert pid == "player2"
 
         assigned = ws2_new.find("player_assigned")
-        assert assigned["game_state"] == GameState.PLAYING
+        assert assigned["game_state"] == "playing"
 
         resumed = ws2_new.find("game_resumed")
         assert resumed is not None
@@ -381,7 +384,7 @@ class TestDisconnect:
         ws2_new = MockWebSocket()
         await service.handle_player_connection(gid, ws2_new, token=token2)
 
-        assert game.state == GameState.PLAYING
+        assert game.state == "playing"
 
     @pytest.mark.asyncio
     async def test_reconnect_preserves_board(self, service):
@@ -399,3 +402,84 @@ class TestDisconnect:
 
         resumed = ws2_new.find("game_resumed")
         assert resumed["own_board"][0][2] == "head_hit"
+
+
+# ---------------------------------------------------------------------------
+# Connection lock (#24)
+# ---------------------------------------------------------------------------
+
+class TestConnectionLock:
+
+    @pytest.mark.asyncio
+    async def test_concurrent_connections_get_different_slots(self, service):
+        """Two connections arriving concurrently must not both get player1."""
+        gid = await service.create_game()
+        ws1, ws2 = MockWebSocket(), MockWebSocket()
+
+        # Launch both connections concurrently
+        results = await asyncio.gather(
+            service.handle_player_connection(gid, ws1),
+            service.handle_player_connection(gid, ws2),
+        )
+        # Both should succeed, getting different slots
+        assert set(results) == {"player1", "player2"}
+
+    @pytest.mark.asyncio
+    async def test_third_concurrent_connection_rejected(self, service):
+        """With two connections in-flight, a third must be rejected."""
+        gid = await service.create_game()
+        ws1, ws2, ws3 = MockWebSocket(), MockWebSocket(), MockWebSocket()
+
+        results = await asyncio.gather(
+            service.handle_player_connection(gid, ws1),
+            service.handle_player_connection(gid, ws2),
+            service.handle_player_connection(gid, ws3),
+        )
+        non_none = [r for r in results if r is not None]
+        assert len(non_none) == 2
+        assert set(non_none) == {"player1", "player2"}
+
+    @pytest.mark.asyncio
+    async def test_lock_is_per_game(self, service):
+        """Locks should be independent per game — different games don't block each other."""
+        gid1 = await service.create_game()
+        gid2 = await service.create_game()
+        assert service._get_lock(gid1) is not service._get_lock(gid2)
+
+
+# ---------------------------------------------------------------------------
+# game_state serialised as plain string (#25)
+# ---------------------------------------------------------------------------
+
+class TestGameStateSerialization:
+
+    @pytest.mark.asyncio
+    async def test_player_assigned_game_state_is_string(self, service):
+        """game_state in player_assigned must be a plain str, not an enum."""
+        gid = await service.create_game()
+        ws = MockWebSocket()
+        await service.handle_player_connection(gid, ws)
+
+        msg = ws.find("player_assigned")
+        assert msg["game_state"] == "waiting"
+        assert type(msg["game_state"]) is str  # not GameState enum
+
+    @pytest.mark.asyncio
+    async def test_game_info_state_is_string(self, service):
+        """state in get_game_info must be a plain str, not an enum."""
+        gid = await service.create_game()
+        info = service.get_game_info(gid)
+        assert info["state"] == "waiting"
+        assert type(info["state"]) is str
+
+    @pytest.mark.asyncio
+    async def test_placing_state_is_string(self, service):
+        """After second player connects, game_state should be the string 'placing'."""
+        gid = await service.create_game()
+        ws1, ws2 = MockWebSocket(), MockWebSocket()
+        await service.handle_player_connection(gid, ws1)
+        await service.handle_player_connection(gid, ws2)
+
+        msg = ws2.find("player_assigned")
+        assert msg["game_state"] == "placing"
+        assert type(msg["game_state"]) is str

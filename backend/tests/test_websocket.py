@@ -532,3 +532,56 @@ class TestWebSocketErrorHandling:
         ws1.send_json(PLANE_1)
         r = ws1.receive_json()
         assert r["type"] == "plane_placed"
+
+
+# ---------------------------------------------------------------------------
+# WebSocket Origin validation (#17)
+# ---------------------------------------------------------------------------
+
+class TestWebSocketOriginValidation:
+
+    def test_allowed_origin_connects(self, client):
+        """A WebSocket from an allowed origin should connect normally."""
+        game_id = _create_game(client)
+        with client.websocket_connect(
+            f"/ws/{game_id}",
+            headers={"Origin": "http://localhost:3000"},
+        ) as ws:
+            msg = ws.receive_json()
+            assert msg["type"] == "player_assigned"
+
+    def test_disallowed_origin_rejected(self, client):
+        """A WebSocket from an unknown origin should be rejected."""
+        game_id = _create_game(client)
+        with pytest.raises(Exception):
+            with client.websocket_connect(
+                f"/ws/{game_id}",
+                headers={"Origin": "http://evil.example.com"},
+            ) as ws:
+                ws.receive_json()
+
+    def test_no_origin_header_allowed(self, client):
+        """Non-browser clients without an Origin header should connect."""
+        game_id = _create_game(client)
+        # TestClient doesn't send Origin by default
+        with client.websocket_connect(f"/ws/{game_id}") as ws:
+            msg = ws.receive_json()
+            assert msg["type"] == "player_assigned"
+
+
+# ---------------------------------------------------------------------------
+# Game info endpoint hardening (#18)
+# ---------------------------------------------------------------------------
+
+class TestGameInfoHardening:
+
+    def test_get_game_only_returns_id_and_state(self, client):
+        """GET /game/{id} must not reveal player slots or current turn."""
+        game_id = _create_game(client)
+        response = client.get(f"/game/{game_id}")
+        data = response.json()
+        assert set(data.keys()) == {"id", "state"}
+
+    def test_get_game_nonexistent_returns_404(self, client):
+        response = client.get("/game/nonexistent-id")
+        assert response.status_code == 404

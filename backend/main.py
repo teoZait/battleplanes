@@ -66,9 +66,23 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type"],
 )
+
+
+def _get_client_ip(request: Request) -> str:
+    """Return the real client IP.
+
+    Behind our nginx reverse-proxy the ``X-Forwarded-For`` header is set to
+    ``$remote_addr`` (overwritten, not appended) so it always contains exactly
+    the real client IP and cannot be spoofed by the end-user.  When the header
+    is absent (direct access, tests) we fall back to ``request.client.host``.
+    """
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 @app.middleware("http")
@@ -76,7 +90,7 @@ async def rate_limit_middleware(request: Request, call_next):
     if request.url.path == "/":  # skip health check
         return await call_next(request)
 
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _get_client_ip(request)
     now = time.time()
     window_start = now - RATE_LIMIT_WINDOW
 
@@ -123,9 +137,22 @@ _WS_MSG_PER_SECOND = 10
 _WS_MAX_MSG_SIZE = 1024  # bytes (valid game messages are < 200 bytes)
 
 
+def _check_ws_origin(websocket: WebSocket) -> bool:
+    """Validate the WebSocket Origin header against allowed CORS origins."""
+    origin = websocket.headers.get("origin")
+    if origin is None:
+        return True  # non-browser clients (curl, game bots) don't send Origin
+    return origin in allowed_origins
+
+
 @app.websocket("/ws/{game_id}")
 async def websocket_endpoint(websocket: WebSocket, game_id: str):
     """WebSocket endpoint for real-time gameplay"""
+    # #17 — Reject cross-origin WebSocket connections
+    if not _check_ws_origin(websocket):
+        await websocket.close(code=1008)
+        return
+
     # Verify game exists
     if not game_service.get_game(game_id):
         await websocket.close(code=1008)

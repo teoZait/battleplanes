@@ -28,7 +28,14 @@ class GameService:
         self.connection_manager = ConnectionManager()
         self._game_store = game_store
         self.games: Dict[str, Game] = {}
+        self._game_locks: Dict[str, asyncio.Lock] = {}
         self._cleanup_task: Optional[asyncio.Task] = None
+
+    def _get_lock(self, game_id: str) -> asyncio.Lock:
+        """Get or create a per-game asyncio lock."""
+        if game_id not in self._game_locks:
+            self._game_locks[game_id] = asyncio.Lock()
+        return self._game_locks[game_id]
 
     async def initialize(self) -> None:
         """Load persisted games from Redis and start background cleanup."""
@@ -60,6 +67,7 @@ class GameService:
                 stale_ids.append(game_id)
         for game_id in stale_ids:
             del self.games[game_id]
+            self._game_locks.pop(game_id, None)
             if game_id in self.connection_manager.active_connections:
                 del self.connection_manager.active_connections[game_id]
             if self._game_store:
@@ -84,19 +92,18 @@ class GameService:
         return self.games.get(game_id)
     
     def get_game_info(self, game_id: str) -> Optional[dict]:
-        """Get game information for API response"""
+        """Get game information for API response.
+
+        Only exposes the game state — player slot occupancy is deliberately
+        hidden to prevent game-ID enumeration attacks (#18).
+        """
         game = self.get_game(game_id)
         if not game:
             return None
-        
+
         return {
             "id": game.id,
-            "state": game.state,
-            "current_turn": game.current_turn,
-            "players": {
-                "player1": game.players["player1"] is not None,
-                "player2": game.players["player2"] is not None
-            }
+            "state": game.state.value,
         }
     
     async def handle_player_connection(
@@ -109,6 +116,9 @@ class GameService:
         session tokens and reconnects the original player.  Without a token
         only genuinely unclaimed slots (never-connected) can be assigned.
 
+        A per-game asyncio lock serialises connection attempts so two
+        simultaneous WebSocket upgrades cannot claim the same slot (#24).
+
         Returns:
             player_id if successful, None otherwise
         """
@@ -116,64 +126,66 @@ class GameService:
         if not game:
             return None
 
-        player_id: str | None = None
+        lock = self._get_lock(game_id)
+        async with lock:
+            player_id: str | None = None
 
-        if token:
-            # Reconnection — match the token to an existing slot
-            for pid in ("player1", "player2"):
-                stored = game.session_tokens.get(pid)
-                if stored and secrets.compare_digest(stored, token):
-                    player_id = pid
-                    break
-            if player_id is None:
-                return None  # invalid / expired token
-        else:
-            # First connection — only allow unclaimed slots (no token issued yet)
-            for pid in ("player1", "player2"):
-                if game.session_tokens[pid] is None and game.players[pid] is None:
-                    player_id = pid
-                    break
-            if player_id is None:
-                return None  # game is full
+            if token:
+                # Reconnection — match the token to an existing slot
+                for pid in ("player1", "player2"):
+                    stored = game.session_tokens.get(pid)
+                    if stored and secrets.compare_digest(stored, token):
+                        player_id = pid
+                        break
+                if player_id is None:
+                    return None  # invalid / expired token
+            else:
+                # First connection — only allow unclaimed slots (no token issued yet)
+                for pid in ("player1", "player2"):
+                    if game.session_tokens[pid] is None and game.players[pid] is None:
+                        player_id = pid
+                        break
+                if player_id is None:
+                    return None  # game is full
 
-        # Assign websocket to the slot
-        game.players[player_id] = websocket
+            # Assign websocket to the slot
+            game.players[player_id] = websocket
 
-        # Issue a session token for brand-new players
-        if game.session_tokens[player_id] is None:
-            game.session_tokens[player_id] = secrets.token_urlsafe(32)
+            # Issue a session token for brand-new players
+            if game.session_tokens[player_id] is None:
+                game.session_tokens[player_id] = secrets.token_urlsafe(32)
 
-        # State transition when the second player arrives
-        if player_id == "player2" and game.state == GameState.WAITING:
-            game.state = GameState.PLACING
+            # State transition when the second player arrives
+            if player_id == "player2" and game.state == GameState.WAITING:
+                game.state = GameState.PLACING
 
-        await self.connection_manager.connect(game_id, player_id, websocket)
+            await self.connection_manager.connect(game_id, player_id, websocket)
 
-        # Send player assignment (includes session token for the client to store)
-        await self.connection_manager.send_to_player(game_id, player_id, {
-            "type": "player_assigned",
-            "player_id": player_id,
-            "game_state": game.state,
-            "session_token": game.session_tokens[player_id],
-        })
-
-        # If game is already in progress, send board state so the client can resume
-        if game.state in (GameState.PLAYING, GameState.FINISHED):
+            # Send player assignment (includes session token for the client to store)
             await self.connection_manager.send_to_player(game_id, player_id, {
-                "type": "game_resumed",
-                "own_board": game.boards[player_id],
-                "opponent_board": game.get_masked_board(player_id),
-                "current_turn": game.current_turn,
-            })
-        # Notify both players if game is ready for placement
-        elif game.state == GameState.PLACING:
-            await self.connection_manager.broadcast_to_game(game_id, {
-                "type": "game_ready",
-                "message": "Both players connected. Place your planes! (2 planes each)"
+                "type": "player_assigned",
+                "player_id": player_id,
+                "game_state": game.state.value,
+                "session_token": game.session_tokens[player_id],
             })
 
-        await self._persist(game_id)
-        return player_id
+            # If game is already in progress, send board state so the client can resume
+            if game.state in (GameState.PLAYING, GameState.FINISHED):
+                await self.connection_manager.send_to_player(game_id, player_id, {
+                    "type": "game_resumed",
+                    "own_board": game.boards[player_id],
+                    "opponent_board": game.get_masked_board(player_id),
+                    "current_turn": game.current_turn,
+                })
+            # Notify both players if game is ready for placement
+            elif game.state == GameState.PLACING:
+                await self.connection_manager.broadcast_to_game(game_id, {
+                    "type": "game_ready",
+                    "message": "Both players connected. Place your planes! (2 planes each)"
+                })
+
+            await self._persist(game_id)
+            return player_id
     
     async def handle_plane_placement(self, game_id: str, player_id: str, plane_data: dict):
         """Handle plane placement request"""
