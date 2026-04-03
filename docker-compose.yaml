@@ -1,4 +1,13 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: battleships-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - battleships-network
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -8,6 +17,9 @@ services:
       - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
     networks:
       - battleships-network
     restart: unless-stopped

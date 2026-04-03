@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from application.game_service import GameService
 from application.schemas import parse_client_message
+from infrastructure.game_store import GameStore
 
 app = FastAPI(title="Warplanes API")
 
@@ -55,8 +56,12 @@ async def rate_limit_middleware(request: Request, call_next):
 
     return await call_next(request)
 
+# Persistence (optional — active only when REDIS_URL is set)
+redis_url = os.environ.get("REDIS_URL")
+game_store = GameStore(redis_url) if redis_url else None
+
 # Application service (singleton)
-game_service = GameService()
+game_service = GameService(game_store=game_store)
 
 
 @app.get("/")

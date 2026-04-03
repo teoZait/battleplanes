@@ -1,24 +1,38 @@
 """
 Application Service - Game orchestration and use cases
 """
+from __future__ import annotations
 from typing import Dict, Optional
 import uuid
 from domain.models import Game
 from domain.value_objects import GameState
 from infrastructure.connection_manager import ConnectionManager
+from infrastructure.game_store import GameStore
 
 
 class GameService:
     """Application service for game-related operations"""
-    
-    def __init__(self):
-        self.games: Dict[str, Game] = {}
+
+    def __init__(self, game_store: Optional[GameStore] = None):
         self.connection_manager = ConnectionManager()
+        self._game_store = game_store
+
+        # Restore persisted games on startup (Redis → memory)
+        if game_store and game_store.available:
+            self.games: Dict[str, Game] = game_store.load_all()
+        else:
+            self.games = {}
     
+    def _persist(self, game_id: str) -> None:
+        """Write-through: save current game state to Redis (no-op without store)."""
+        if self._game_store and game_id in self.games:
+            self._game_store.save(self.games[game_id])
+
     def create_game(self) -> str:
         """Create a new game and return its ID"""
         game_id = str(uuid.uuid4())
         self.games[game_id] = Game(game_id)
+        self._persist(game_id)
         return game_id
     
     def get_game(self, game_id: str) -> Optional[Game]:
@@ -80,6 +94,7 @@ class GameService:
                 "message": "Both players connected. Place your planes! (2 planes each)"
             })
 
+        self._persist(game_id)
         return player_id
     
     async def handle_plane_placement(self, game_id: str, player_id: str, plane_data: dict):
@@ -108,7 +123,9 @@ class GameService:
                     "type": "game_started",
                     "current_turn": game.current_turn
                 })
-    
+
+        self._persist(game_id)
+
     async def handle_attack(self, game_id: str, player_id: str, x: int, y: int):
         """Handle attack request"""
         game = self.get_game(game_id)
@@ -171,7 +188,9 @@ class GameService:
                 "type": "turn_changed",
                 "current_turn": game.current_turn
             })
-    
+
+        self._persist(game_id)
+
     async def handle_player_disconnection(self, game_id: str, player_id: str):
         """Handle player disconnection"""
         self.connection_manager.disconnect(game_id, player_id)
@@ -185,3 +204,5 @@ class GameService:
             "type": "player_disconnected",
             "player_id": player_id
         })
+
+        self._persist(game_id)
