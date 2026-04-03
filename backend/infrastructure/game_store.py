@@ -7,9 +7,10 @@ configured the store is a no-op and games live only in memory.
 """
 import json
 import logging
+import time
 from typing import Dict, Optional
 
-import redis
+import redis.asyncio as aioredis
 
 from domain.models import Game, Plane
 from domain.value_objects import GameState
@@ -24,9 +25,9 @@ class GameStore:
     """Persists serialised Game state to Redis."""
 
     def __init__(self, redis_url: Optional[str] = None):
-        self._redis: Optional[redis.Redis] = None
+        self._redis: Optional[aioredis.Redis] = None
         if redis_url:
-            self._redis = redis.Redis.from_url(redis_url, decode_responses=True)
+            self._redis = aioredis.from_url(redis_url, decode_responses=True)
             logger.info("GameStore connected to Redis at %s", redis_url)
 
     @property
@@ -37,30 +38,30 @@ class GameStore:
     # Public API
     # ------------------------------------------------------------------
 
-    def save(self, game: Game) -> None:
+    async def save(self, game: Game) -> None:
         """Write-through: persist the current game state."""
         if not self._redis:
             return
         key = self._key(game.id)
         data = json.dumps(self._serialize(game))
-        self._redis.set(key, data, ex=GAME_TTL_SECONDS)
+        await self._redis.set(key, data, ex=GAME_TTL_SECONDS)
 
-    def load(self, game_id: str) -> Optional[Game]:
+    async def load(self, game_id: str) -> Optional[Game]:
         """Load a single game from Redis."""
         if not self._redis:
             return None
-        raw = self._redis.get(self._key(game_id))
+        raw = await self._redis.get(self._key(game_id))
         if raw is None:
             return None
         return self._deserialize(json.loads(raw))
 
-    def load_all(self) -> Dict[str, Game]:
+    async def load_all(self) -> Dict[str, Game]:
         """Restore every persisted game (used at startup)."""
         if not self._redis:
             return {}
         games: Dict[str, Game] = {}
-        for key in self._redis.scan_iter(match="game:*"):
-            raw = self._redis.get(key)
+        async for key in self._redis.scan_iter(match="game:*"):
+            raw = await self._redis.get(key)
             if raw is None:
                 continue
             game = self._deserialize(json.loads(raw))
@@ -68,11 +69,11 @@ class GameStore:
         logger.info("Restored %d game(s) from Redis", len(games))
         return games
 
-    def delete(self, game_id: str) -> None:
+    async def delete(self, game_id: str) -> None:
         """Remove a finished/stale game from Redis."""
         if not self._redis:
             return
-        self._redis.delete(self._key(game_id))
+        await self._redis.delete(self._key(game_id))
 
     # ------------------------------------------------------------------
     # Serialisation helpers
@@ -94,6 +95,8 @@ class GameStore:
             "state": game.state.value,
             "current_turn": game.current_turn,
             "ready": game.ready,
+            "created_at": game.created_at,
+            "finished_at": game.finished_at,
         }
 
     @staticmethod
@@ -107,5 +110,7 @@ class GameStore:
         game.state = GameState(data["state"])
         game.current_turn = data["current_turn"]
         game.ready = data["ready"]
+        game.created_at = data.get("created_at", time.time())
+        game.finished_at = data.get("finished_at")
         # players stay None — they reconnect via WebSocket
         return game

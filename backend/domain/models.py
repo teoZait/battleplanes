@@ -1,6 +1,7 @@
 """
 Domain Models - Core entities
 """
+import time
 from typing import List, Tuple, Dict, Optional
 from pydantic import BaseModel
 from .value_objects import PlaneOrientation, GameState, CellStatus
@@ -49,6 +50,8 @@ class Game:
         self.state = GameState.WAITING
         self.current_turn = "player1"
         self.ready: Dict[str, bool] = {"player1": False, "player2": False}
+        self.created_at: float = time.time()
+        self.finished_at: Optional[float] = None
 
     def add_player(self, websocket) -> Optional[str]:
         """Add a player to the game. Returns player_id or None if full."""
@@ -188,3 +191,4 @@ class Game:
     def finish_game(self):
         """Mark game as finished"""
         self.state = GameState.FINISHED
+        self.finished_at = time.time()

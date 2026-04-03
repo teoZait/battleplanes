@@ -2,12 +2,22 @@
 Application Service - Game orchestration and use cases
 """
 from __future__ import annotations
+import asyncio
+import logging
+import time
 from typing import Dict, Optional
 import uuid
 from domain.models import Game
 from domain.value_objects import GameState
 from infrastructure.connection_manager import ConnectionManager
 from infrastructure.game_store import GameStore
+
+logger = logging.getLogger(__name__)
+
+# Cleanup thresholds
+_FINISHED_GAME_TTL = 30 * 60    # 30 minutes after finishing
+_WAITING_GAME_TTL = 2 * 60 * 60  # 2 hours if still waiting
+_CLEANUP_INTERVAL = 5 * 60       # run every 5 minutes
 
 
 class GameService:
@@ -16,23 +26,56 @@ class GameService:
     def __init__(self, game_store: Optional[GameStore] = None):
         self.connection_manager = ConnectionManager()
         self._game_store = game_store
+        self.games: Dict[str, Game] = {}
+        self._cleanup_task: Optional[asyncio.Task] = None
 
-        # Restore persisted games on startup (Redis → memory)
-        if game_store and game_store.available:
-            self.games: Dict[str, Game] = game_store.load_all()
-        else:
-            self.games = {}
-    
-    def _persist(self, game_id: str) -> None:
+    async def initialize(self) -> None:
+        """Load persisted games from Redis and start background cleanup."""
+        if self._game_store and self._game_store.available:
+            self.games = await self._game_store.load_all()
+        self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
+
+    async def shutdown(self) -> None:
+        """Cancel background tasks."""
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
+
+    async def _periodic_cleanup(self) -> None:
+        """Periodically evict stale games from memory and Redis."""
+        while True:
+            await asyncio.sleep(_CLEANUP_INTERVAL)
+            try:
+                await self._cleanup_stale_games()
+            except Exception:
+                logger.exception("Error during game cleanup")
+
+    async def _cleanup_stale_games(self) -> None:
+        now = time.time()
+        stale_ids = []
+        for game_id, game in self.games.items():
+            if game.state == GameState.FINISHED and game.finished_at and (now - game.finished_at) > _FINISHED_GAME_TTL:
+                stale_ids.append(game_id)
+            elif game.state == GameState.WAITING and (now - game.created_at) > _WAITING_GAME_TTL:
+                stale_ids.append(game_id)
+        for game_id in stale_ids:
+            del self.games[game_id]
+            if game_id in self.connection_manager.active_connections:
+                del self.connection_manager.active_connections[game_id]
+            if self._game_store:
+                await self._game_store.delete(game_id)
+        if stale_ids:
+            logger.info("Cleaned up %d stale game(s)", len(stale_ids))
+
+    async def _persist(self, game_id: str) -> None:
         """Write-through: save current game state to Redis (no-op without store)."""
         if self._game_store and game_id in self.games:
-            self._game_store.save(self.games[game_id])
+            await self._game_store.save(self.games[game_id])
 
-    def create_game(self) -> str:
+    async def create_game(self) -> str:
         """Create a new game and return its ID"""
         game_id = str(uuid.uuid4())
         self.games[game_id] = Game(game_id)
-        self._persist(game_id)
+        await self._persist(game_id)
         return game_id
     
     def get_game(self, game_id: str) -> Optional[Game]:
@@ -94,7 +137,7 @@ class GameService:
                 "message": "Both players connected. Place your planes! (2 planes each)"
             })
 
-        self._persist(game_id)
+        await self._persist(game_id)
         return player_id
     
     async def handle_plane_placement(self, game_id: str, player_id: str, plane_data: dict):
@@ -124,7 +167,7 @@ class GameService:
                     "current_turn": game.current_turn
                 })
 
-        self._persist(game_id)
+        await self._persist(game_id)
 
     async def handle_attack(self, game_id: str, player_id: str, x: int, y: int):
         """Handle attack request"""
@@ -189,7 +232,7 @@ class GameService:
                 "current_turn": game.current_turn
             })
 
-        self._persist(game_id)
+        await self._persist(game_id)
 
     async def handle_player_disconnection(self, game_id: str, player_id: str):
         """Handle player disconnection"""
@@ -205,4 +248,4 @@ class GameService:
             "player_id": player_id
         })
 
-        self._persist(game_id)
+        await self._persist(game_id)

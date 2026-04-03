@@ -1,9 +1,11 @@
 """
 FastAPI Application - API Layer / Presentation Layer
 """
+import asyncio
 import os
 import time
 from collections import defaultdict
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +14,43 @@ from application.game_service import GameService
 from application.schemas import parse_client_message
 from infrastructure.game_store import GameStore
 
-app = FastAPI(title="Warplanes API")
+# Persistence (optional — active only when REDIS_URL is set)
+redis_url = os.environ.get("REDIS_URL")
+game_store = GameStore(redis_url) if redis_url else None
+
+# Application service (singleton)
+game_service = GameService(game_store=game_store)
+
+# Rate limiting
+RATE_LIMIT_WINDOW = 60  # seconds
+RATE_LIMIT_MAX_REQUESTS = 30  # per window
+_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+
+
+async def _cleanup_rate_limits():
+    """Periodically remove stale entries from the rate limit store."""
+    while True:
+        await asyncio.sleep(300)
+        now = time.time()
+        window_start = now - RATE_LIMIT_WINDOW
+        stale = [ip for ip, ts in _rate_limit_store.items()
+                 if not any(t > window_start for t in ts)]
+        for ip in stale:
+            del _rate_limit_store[ip]
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: restore games from Redis and start background tasks
+    await game_service.initialize()
+    rate_limit_task = asyncio.create_task(_cleanup_rate_limits())
+    yield
+    # Shutdown: cancel background tasks
+    rate_limit_task.cancel()
+    await game_service.shutdown()
+
+
+app = FastAPI(title="Warplanes API", lifespan=lifespan)
 
 # CORS middleware - restrict to configured origins
 allowed_origins = os.environ.get(
@@ -27,11 +65,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Rate limiting
-RATE_LIMIT_WINDOW = 60  # seconds
-RATE_LIMIT_MAX_REQUESTS = 30  # per window
-_rate_limit_store: dict[str, list[float]] = defaultdict(list)
 
 
 @app.middleware("http")
@@ -56,13 +89,6 @@ async def rate_limit_middleware(request: Request, call_next):
 
     return await call_next(request)
 
-# Persistence (optional — active only when REDIS_URL is set)
-redis_url = os.environ.get("REDIS_URL")
-game_store = GameStore(redis_url) if redis_url else None
-
-# Application service (singleton)
-game_service = GameService(game_store=game_store)
-
 
 @app.get("/")
 async def root():
@@ -73,7 +99,7 @@ async def root():
 @app.post("/game/create")
 async def create_game():
     """Create a new game"""
-    game_id = game_service.create_game()
+    game_id = await game_service.create_game()
     return {"game_id": game_id}
 
 
