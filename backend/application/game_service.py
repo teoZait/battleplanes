@@ -4,6 +4,7 @@ Application Service - Game orchestration and use cases
 from __future__ import annotations
 import asyncio
 import logging
+import secrets
 import time
 from typing import Dict, Optional
 import uuid
@@ -98,28 +99,62 @@ class GameService:
             }
         }
     
-    async def handle_player_connection(self, game_id: str, websocket) -> Optional[str]:
+    async def handle_player_connection(
+        self, game_id: str, websocket, token: str | None = None
+    ) -> Optional[str]:
         """
         Handle a new player connection to a game.
-        
+
+        If *token* is provided the server verifies it against the stored
+        session tokens and reconnects the original player.  Without a token
+        only genuinely unclaimed slots (never-connected) can be assigned.
+
         Returns:
             player_id if successful, None otherwise
         """
         game = self.get_game(game_id)
         if not game:
             return None
-        
-        player_id = game.add_player(websocket)
-        if not player_id:
-            return None
-        
+
+        player_id: str | None = None
+
+        if token:
+            # Reconnection — match the token to an existing slot
+            for pid in ("player1", "player2"):
+                stored = game.session_tokens.get(pid)
+                if stored and secrets.compare_digest(stored, token):
+                    player_id = pid
+                    break
+            if player_id is None:
+                return None  # invalid / expired token
+        else:
+            # First connection — only allow unclaimed slots (no token issued yet)
+            for pid in ("player1", "player2"):
+                if game.session_tokens[pid] is None and game.players[pid] is None:
+                    player_id = pid
+                    break
+            if player_id is None:
+                return None  # game is full
+
+        # Assign websocket to the slot
+        game.players[player_id] = websocket
+
+        # Issue a session token for brand-new players
+        if game.session_tokens[player_id] is None:
+            game.session_tokens[player_id] = secrets.token_urlsafe(32)
+
+        # State transition when the second player arrives
+        if player_id == "player2" and game.state == GameState.WAITING:
+            game.state = GameState.PLACING
+
         await self.connection_manager.connect(game_id, player_id, websocket)
 
-        # Send player assignment
+        # Send player assignment (includes session token for the client to store)
         await self.connection_manager.send_to_player(game_id, player_id, {
             "type": "player_assigned",
             "player_id": player_id,
-            "game_state": game.state
+            "game_state": game.state,
+            "session_token": game.session_tokens[player_id],
         })
 
         # If game is already in progress, send board state so the client can resume

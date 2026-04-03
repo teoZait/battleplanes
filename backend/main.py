@@ -2,6 +2,8 @@
 FastAPI Application - API Layer / Presentation Layer
 """
 import asyncio
+import json
+import logging
 import os
 import time
 from collections import defaultdict
@@ -13,6 +15,8 @@ from fastapi.responses import JSONResponse
 from application.game_service import GameService
 from application.schemas import parse_client_message
 from infrastructure.game_store import GameStore
+
+logger = logging.getLogger(__name__)
 
 # Persistence (optional — active only when REDIS_URL is set)
 redis_url = os.environ.get("REDIS_URL")
@@ -114,6 +118,11 @@ async def get_game(game_id: str):
     return game_info
 
 
+# WebSocket security limits
+_WS_MSG_PER_SECOND = 10
+_WS_MAX_MSG_SIZE = 1024  # bytes (valid game messages are < 200 bytes)
+
+
 @app.websocket("/ws/{game_id}")
 async def websocket_endpoint(websocket: WebSocket, game_id: str):
     """WebSocket endpoint for real-time gameplay"""
@@ -121,17 +130,55 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
     if not game_service.get_game(game_id):
         await websocket.close(code=1008)
         return
-    
-    # Connect player
-    player_id = await game_service.handle_player_connection(game_id, websocket)
-    
+
+    # #13 — Extract session token from query params for reconnection
+    token = websocket.query_params.get("token")
+
+    # Connect player (token verified inside game_service)
+    player_id = await game_service.handle_player_connection(
+        game_id, websocket, token=token
+    )
+
     if player_id is None:
         await websocket.close(code=1008)
         return
-    
+
+    # #14 — Per-connection message rate tracking
+    msg_timestamps: list[float] = []
+
     try:
         while True:
-            data = await websocket.receive_json()
+            # #15 — Message size limit: read raw text, check length, then parse
+            raw = await websocket.receive_text()
+
+            if len(raw) > _WS_MAX_MSG_SIZE:
+                await game_service.connection_manager.send_to_player(
+                    game_id, player_id,
+                    {"type": "error", "message": "Message too large"},
+                )
+                continue
+
+            # #14 — Per-connection rate limiting
+            now = time.time()
+            msg_timestamps = [t for t in msg_timestamps if t > now - 1.0]
+            if len(msg_timestamps) >= _WS_MSG_PER_SECOND:
+                await game_service.connection_manager.send_to_player(
+                    game_id, player_id,
+                    {"type": "error", "message": "Too many messages, slow down"},
+                )
+                continue
+            msg_timestamps.append(now)
+
+            # Parse JSON (replaces receive_json)
+            try:
+                data = json.loads(raw)
+            except (json.JSONDecodeError, ValueError):
+                await game_service.connection_manager.send_to_player(
+                    game_id, player_id,
+                    {"type": "error", "message": "Invalid JSON"},
+                )
+                continue
+
             message = parse_client_message(data)
 
             if message is None:
@@ -155,9 +202,17 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
                         "own_board": game.boards[player_id],
                         "opponent_board": game.get_masked_board(player_id)
                     })
-    
+
     except WebSocketDisconnect:
         await game_service.handle_player_disconnection(game_id, player_id)
+    # #16 — Catch any other exception so disconnection cleanup always runs
+    except Exception:
+        logger.exception("WebSocket error for game=%s player=%s", game_id, player_id)
+        await game_service.handle_player_disconnection(game_id, player_id)
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

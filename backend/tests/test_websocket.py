@@ -7,7 +7,8 @@ complete game to victory, disconnection/reconnection, and invalid messages.
 import contextlib
 import pytest
 from fastapi.testclient import TestClient
-from main import app, game_service, _rate_limit_store
+import main as main_module
+from main import app, game_service
 
 
 # ---------------------------------------------------------------------------
@@ -19,7 +20,7 @@ def reset_state():
     """Reset all server state between tests."""
     game_service.games.clear()
     game_service.connection_manager.active_connections.clear()
-    _rate_limit_store.clear()
+    main_module._rate_limit_store.clear()
 
 
 @pytest.fixture
@@ -126,6 +127,7 @@ class TestConnection:
             assert msg["type"] == "player_assigned"
             assert msg["player_id"] == "player1"
             assert msg["game_state"] == "waiting"
+            assert "session_token" in msg
 
     def test_second_player_triggers_placing(self, client):
         game_id = _create_game(client)
@@ -326,19 +328,24 @@ class TestDisconnect:
 
     def test_reconnect_to_playing_game(self, client):
         game_id = _create_game(client)
+        token1 = token2 = None
         with contextlib.ExitStack() as stack:
             ws1 = stack.enter_context(client.websocket_connect(f"/ws/{game_id}"))
-            ws1.receive_json()
+            p1 = ws1.receive_json()
+            token1 = p1["session_token"]
 
             ws2 = stack.enter_context(client.websocket_connect(f"/ws/{game_id}"))
-            ws2.receive_json()
-            ws1.receive_json()
-            ws2.receive_json()
+            p2 = ws2.receive_json()
+            token2 = p2["session_token"]
+            ws1.receive_json()  # game_ready
+            ws2.receive_json()  # game_ready
             _place_all_planes(ws1, ws2)
 
-        # Both disconnected; reconnect as fresh sockets
+        # Both disconnected; reconnect with session tokens
         with contextlib.ExitStack() as stack:
-            ws1 = stack.enter_context(client.websocket_connect(f"/ws/{game_id}"))
+            ws1 = stack.enter_context(
+                client.websocket_connect(f"/ws/{game_id}?token={token1}")
+            )
             p1 = ws1.receive_json()
             assert p1["type"] == "player_assigned"
             assert p1["game_state"] == "playing"
@@ -349,7 +356,9 @@ class TestDisconnect:
             assert len(resumed1["opponent_board"]) == 10
             assert resumed1["current_turn"] == "player1"
 
-            ws2 = stack.enter_context(client.websocket_connect(f"/ws/{game_id}"))
+            ws2 = stack.enter_context(
+                client.websocket_connect(f"/ws/{game_id}?token={token2}")
+            )
             p2 = ws2.receive_json()
             assert p2["type"] == "player_assigned"
             assert p2["player_id"] == "player2"
@@ -363,7 +372,8 @@ class TestDisconnect:
         with client.websocket_connect(f"/ws/{game_id}") as ws1:
             ws1.receive_json()  # player_assigned
             with client.websocket_connect(f"/ws/{game_id}") as ws2:
-                ws2.receive_json()  # player_assigned
+                p2 = ws2.receive_json()  # player_assigned
+                token2 = p2["session_token"]
                 ws1.receive_json()  # game_ready
                 ws2.receive_json()  # game_ready
                 _place_all_planes(ws1, ws2)
@@ -375,8 +385,10 @@ class TestDisconnect:
             # ws2 disconnected; ws1 still connected
             ws1.receive_json()  # player_disconnected
 
-            # Reconnect player2 and verify board reflects the head_hit
-            with client.websocket_connect(f"/ws/{game_id}") as ws2_new:
+            # Reconnect player2 with token and verify board reflects the head_hit
+            with client.websocket_connect(
+                f"/ws/{game_id}?token={token2}"
+            ) as ws2_new:
                 ws2_new.receive_json()  # player_assigned
                 resumed = ws2_new.receive_json()
                 assert resumed["type"] == "game_resumed"
@@ -407,3 +419,116 @@ class TestInvalidMessages:
         ws1.send_json({"x": 5, "y": 3})
         err = ws1.receive_json()
         assert err["type"] == "error"
+
+
+# ---------------------------------------------------------------------------
+# Session token authentication — integration (#13)
+# ---------------------------------------------------------------------------
+
+class TestSessionTokenAuth:
+
+    def test_player_assigned_includes_session_token(self, client):
+        game_id = _create_game(client)
+        with client.websocket_connect(f"/ws/{game_id}") as ws:
+            msg = ws.receive_json()
+            assert msg["type"] == "player_assigned"
+            assert "session_token" in msg
+            assert isinstance(msg["session_token"], str)
+            assert len(msg["session_token"]) > 0
+
+    def test_reconnect_with_invalid_token_rejected(self, client):
+        game_id = _create_game(client)
+        with client.websocket_connect(f"/ws/{game_id}") as ws1:
+            ws1.receive_json()
+            with client.websocket_connect(f"/ws/{game_id}") as ws2:
+                ws2.receive_json()
+                ws1.receive_json()  # game_ready
+                ws2.receive_json()  # game_ready
+
+        # Both disconnected; try to reconnect with wrong token
+        with pytest.raises(Exception):
+            with client.websocket_connect(
+                f"/ws/{game_id}?token=invalid-token"
+            ) as ws:
+                ws.receive_json()
+
+    def test_reconnect_without_token_on_claimed_slot_rejected(self, client):
+        game_id = _create_game(client)
+        with client.websocket_connect(f"/ws/{game_id}") as ws1:
+            ws1.receive_json()
+            with client.websocket_connect(f"/ws/{game_id}") as ws2:
+                ws2.receive_json()
+                ws1.receive_json()
+                ws2.receive_json()
+
+        # Both disconnected; try to reconnect without token (slots have tokens)
+        with pytest.raises(Exception):
+            with client.websocket_connect(f"/ws/{game_id}") as ws:
+                ws.receive_json()
+
+
+# ---------------------------------------------------------------------------
+# WebSocket message size limit (#15)
+# ---------------------------------------------------------------------------
+
+class TestWebSocketMessageSize:
+
+    def test_oversized_message_rejected(self, two_player_game):
+        _, ws1, _ = two_player_game
+        ws1.send_text("x" * 2000)
+        err = ws1.receive_json()
+        assert err["type"] == "error"
+        assert "too large" in err["message"].lower()
+
+    def test_normal_size_message_accepted(self, two_player_game):
+        _, ws1, _ = two_player_game
+        ws1.send_json(PLANE_1)
+        r = ws1.receive_json()
+        assert r["type"] == "plane_placed"
+
+
+# ---------------------------------------------------------------------------
+# WebSocket rate limiting (#14)
+# ---------------------------------------------------------------------------
+
+class TestWebSocketRateLimit:
+
+    def test_rapid_messages_get_throttled(self, two_player_game):
+        """Sending more than 10 messages/sec should trigger rate limiting."""
+        _, ws1, _ = two_player_game
+        # Send 12 messages rapidly (limit is 10/sec)
+        for _ in range(12):
+            ws1.send_json({"type": "get_boards"})
+
+        # Consume all 12 responses — at least one should be a rate-limit error
+        responses = [ws1.receive_json() for _ in range(12)]
+        error_msgs = [r for r in responses if r["type"] == "error"
+                      and "slow down" in r.get("message", "").lower()]
+        assert len(error_msgs) >= 1
+
+
+# ---------------------------------------------------------------------------
+# WebSocket error handling (#16)
+# ---------------------------------------------------------------------------
+
+class TestWebSocketErrorHandling:
+
+    def test_malformed_json_returns_error(self, two_player_game):
+        """Invalid JSON should return an error, not crash the handler."""
+        _, ws1, _ = two_player_game
+        ws1.send_text("{invalid json")
+        err = ws1.receive_json()
+        assert err["type"] == "error"
+        assert "invalid json" in err["message"].lower()
+
+    def test_connection_survives_bad_json(self, two_player_game):
+        """After a bad JSON message, the connection should still work."""
+        _, ws1, _ = two_player_game
+        # Send bad JSON
+        ws1.send_text("{bad json")
+        ws1.receive_json()  # error response
+
+        # Connection should still be alive — send a valid message
+        ws1.send_json(PLANE_1)
+        r = ws1.receive_json()
+        assert r["type"] == "plane_placed"

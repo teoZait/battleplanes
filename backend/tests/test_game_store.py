@@ -111,29 +111,70 @@ class TestSerialisation:
         assert restored.players["player1"] is None
         assert restored.players["player2"] is None
 
+    def test_session_tokens_round_trip(self):
+        """Session tokens should survive serialisation."""
+        game = Game("token-test")
+        game.session_tokens = {"player1": "tok-abc", "player2": "tok-xyz"}
+
+        data = GameStore._serialize(game)
+        restored = GameStore._deserialize(data)
+
+        assert restored.session_tokens == {"player1": "tok-abc", "player2": "tok-xyz"}
+
+    def test_timestamps_round_trip(self):
+        """created_at and finished_at should survive serialisation."""
+        game = _make_playing_game()
+        game.finish_game()
+
+        data = GameStore._serialize(game)
+        restored = GameStore._deserialize(data)
+
+        assert restored.created_at == game.created_at
+        assert restored.finished_at == game.finished_at
+        assert restored.finished_at is not None
+
+    def test_deserialize_missing_new_fields(self):
+        """Old data without session_tokens/timestamps should deserialise safely."""
+        data = {
+            "id": "old-game",
+            "boards": Game("x").boards,
+            "planes": {"player1": [], "player2": []},
+            "state": "waiting",
+            "current_turn": "player1",
+            "ready": {"player1": False, "player2": False},
+            # no session_tokens, created_at, finished_at
+        }
+        restored = GameStore._deserialize(data)
+        assert restored.id == "old-game"
+        assert restored.session_tokens == {"player1": None, "player2": None}
+        assert isinstance(restored.created_at, float)
+        assert restored.finished_at is None
+
 
 # ---------------------------------------------------------------------------
-# GameStore with mocked Redis
+# GameStore with async mocked Redis
 # ---------------------------------------------------------------------------
 
 class _FakeRedis:
-    """Minimal in-memory stand-in for redis.Redis (only the methods we use)."""
+    """Minimal async in-memory stand-in for redis.asyncio.Redis."""
 
     def __init__(self):
         self.store: dict[str, str] = {}
 
-    def set(self, key, value, ex=None):
+    async def set(self, key, value, ex=None):
         self.store[key] = value
 
-    def get(self, key):
+    async def get(self, key):
         return self.store.get(key)
 
-    def delete(self, key):
+    async def delete(self, key):
         self.store.pop(key, None)
 
-    def scan_iter(self, match="*"):
+    async def scan_iter(self, match="*"):
         import fnmatch
-        return [k for k in self.store if fnmatch.fnmatch(k, match)]
+        for k in list(self.store.keys()):
+            if fnmatch.fnmatch(k, match):
+                yield k
 
 
 class TestGameStoreOperations:
@@ -143,40 +184,45 @@ class TestGameStoreOperations:
         store._redis = _FakeRedis()
         return store
 
-    def test_save_and_load(self):
+    @pytest.mark.asyncio
+    async def test_save_and_load(self):
         store = self._make_store()
         game = _make_playing_game("save-load")
 
-        store.save(game)
-        loaded = store.load("save-load")
+        await store.save(game)
+        loaded = await store.load("save-load")
 
         assert loaded is not None
         assert loaded.id == "save-load"
         assert loaded.state == GameState.PLAYING
 
-    def test_load_nonexistent(self):
+    @pytest.mark.asyncio
+    async def test_load_nonexistent(self):
         store = self._make_store()
-        assert store.load("nope") is None
+        assert await store.load("nope") is None
 
-    def test_load_all(self):
+    @pytest.mark.asyncio
+    async def test_load_all(self):
         store = self._make_store()
-        store.save(Game("g1"))
-        store.save(Game("g2"))
+        await store.save(Game("g1"))
+        await store.save(Game("g2"))
 
-        games = store.load_all()
+        games = await store.load_all()
         assert set(games.keys()) == {"g1", "g2"}
 
-    def test_delete(self):
+    @pytest.mark.asyncio
+    async def test_delete(self):
         store = self._make_store()
-        store.save(Game("del-me"))
-        store.delete("del-me")
-        assert store.load("del-me") is None
+        await store.save(Game("del-me"))
+        await store.delete("del-me")
+        assert await store.load("del-me") is None
 
-    def test_no_op_without_redis(self):
+    @pytest.mark.asyncio
+    async def test_no_op_without_redis(self):
         store = GameStore(redis_url=None)
-        store.save(Game("x"))
-        assert store.load("x") is None
-        assert store.load_all() == {}
+        await store.save(Game("x"))
+        assert await store.load("x") is None
+        assert await store.load_all() == {}
 
 
 # ---------------------------------------------------------------------------
@@ -206,27 +252,28 @@ class TestServicePersistence:
         service = GameService(game_store=store)
         return service, store
 
-    def test_create_game_persists(self):
+    @pytest.mark.asyncio
+    async def test_create_game_persists(self):
         service, store = self._make_service()
-        gid = service.create_game()
-        assert store.load(gid) is not None
+        gid = await service.create_game()
+        assert await store.load(gid) is not None
 
     @pytest.mark.asyncio
     async def test_plane_placement_persists(self):
         service, store = self._make_service()
-        gid = service.create_game()
+        gid = await service.create_game()
         ws1, ws2 = MockWebSocket(), MockWebSocket()
         await service.handle_player_connection(gid, ws1)
         await service.handle_player_connection(gid, ws2)
 
         await service.handle_plane_placement(gid, "player1", PLANE_1_DATA)
-        loaded = store.load(gid)
+        loaded = await store.load(gid)
         assert len(loaded.planes["player1"]) == 1
 
     @pytest.mark.asyncio
     async def test_attack_persists(self):
         service, store = self._make_service()
-        gid = service.create_game()
+        gid = await service.create_game()
         ws1, ws2 = MockWebSocket(), MockWebSocket()
         await service.handle_player_connection(gid, ws1)
         await service.handle_player_connection(gid, ws2)
@@ -236,36 +283,42 @@ class TestServicePersistence:
             await service.handle_plane_placement(gid, pid, PLANE_2_DATA)
 
         await service.handle_attack(gid, "player1", 5, 5)
-        loaded = store.load(gid)
+        loaded = await store.load(gid)
         assert loaded.boards["player2"][5][5] == "miss"
         assert loaded.current_turn == "player2"
 
     @pytest.mark.asyncio
     async def test_disconnect_persists(self):
         service, store = self._make_service()
-        gid = service.create_game()
+        gid = await service.create_game()
         ws1, ws2 = MockWebSocket(), MockWebSocket()
         await service.handle_player_connection(gid, ws1)
         await service.handle_player_connection(gid, ws2)
 
         await service.handle_player_disconnection(gid, "player1")
-        loaded = store.load(gid)
+        loaded = await store.load(gid)
         assert loaded.players["player1"] is None
 
-    def test_restore_on_startup(self):
-        """A new GameService should restore games from the store."""
+    @pytest.mark.asyncio
+    async def test_restore_on_startup(self):
+        """A new GameService should restore games from the store on initialize()."""
         store = GameStore.__new__(GameStore)
         store._redis = _FakeRedis()
-        store.save(_make_playing_game("restored-1"))
-        store.save(Game("restored-2"))
+        await store.save(_make_playing_game("restored-1"))
+        await store.save(Game("restored-2"))
 
         service = GameService(game_store=store)
+        await service.initialize()
+
         assert "restored-1" in service.games
         assert "restored-2" in service.games
         assert service.games["restored-1"].state == GameState.PLAYING
 
-    def test_works_without_store(self):
+        await service.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_works_without_store(self):
         """GameService must work fine when no store is provided."""
         service = GameService(game_store=None)
-        gid = service.create_game()
+        gid = await service.create_game()
         assert service.get_game(gid) is not None

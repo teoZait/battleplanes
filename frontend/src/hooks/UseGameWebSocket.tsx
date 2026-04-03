@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 export type CellStatus = 'empty' | 'plane' | 'head' | 'hit' | 'miss' | 'head_hit';
 
 export type ServerMessage =
-  | { type: 'player_assigned'; player_id: string; game_state: 'waiting' | 'placing' | 'playing' }
+  | { type: 'player_assigned'; player_id: string; game_state: 'waiting' | 'placing' | 'playing'; session_token?: string }
   | { type: 'game_ready'; message: string }
   | { type: 'plane_placed'; success: boolean; message: string; planes_count: number }
   | { type: 'game_started'; current_turn: string }
@@ -37,6 +37,7 @@ export function useGameWebSocket(params: {
   const retryCountRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intentionalCloseRef = useRef(false);
+  const sessionTokenRef = useRef<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
 
   const connect = useCallback(() => {
@@ -45,7 +46,11 @@ export function useGameWebSocket(params: {
     const isReconnect = retryCountRef.current > 0;
     setConnectionStatus(isReconnect ? 'reconnecting' : 'connecting');
 
-    const ws = new WebSocket(`${WS_URL}/ws/${params.gameId}`);
+    // Include session token on reconnections so the server can verify identity
+    const tokenParam = sessionTokenRef.current
+      ? `?token=${encodeURIComponent(sessionTokenRef.current)}`
+      : '';
+    const ws = new WebSocket(`${WS_URL}/ws/${params.gameId}${tokenParam}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -56,6 +61,10 @@ export function useGameWebSocket(params: {
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data) as ServerMessage;
+      // Capture session token from initial assignment for reconnection
+      if (data.type === 'player_assigned' && data.session_token) {
+        sessionTokenRef.current = data.session_token;
+      }
       params.onMessage(data);
     };
 

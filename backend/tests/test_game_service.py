@@ -65,7 +65,7 @@ async def _connect_two(service: GameService, game_id: str):
 
 async def _setup_playing(service: GameService):
     """Create game, connect 2 players, place all planes, return (game_id, ws1, ws2)."""
-    game_id = service.create_game()
+    game_id = await service.create_game()
     ws1, ws2 = await _connect_two(service, game_id)
 
     for pid in ("player1", "player2"):
@@ -84,20 +84,23 @@ async def _setup_playing(service: GameService):
 
 class TestGameCreation:
 
-    def test_create_returns_uuid(self, service):
-        gid = service.create_game()
+    @pytest.mark.asyncio
+    async def test_create_returns_uuid(self, service):
+        gid = await service.create_game()
         assert isinstance(gid, str) and len(gid) > 0
 
-    def test_get_game(self, service):
-        gid = service.create_game()
+    @pytest.mark.asyncio
+    async def test_get_game(self, service):
+        gid = await service.create_game()
         assert service.get_game(gid) is not None
         assert service.get_game(gid).id == gid
 
     def test_get_nonexistent(self, service):
         assert service.get_game("nope") is None
 
-    def test_game_info(self, service):
-        gid = service.create_game()
+    @pytest.mark.asyncio
+    async def test_game_info(self, service):
+        gid = await service.create_game()
         info = service.get_game_info(gid)
         assert info["id"] == gid
         assert info["state"] == GameState.WAITING
@@ -112,7 +115,7 @@ class TestPlayerConnection:
 
     @pytest.mark.asyncio
     async def test_first_player(self, service):
-        gid = service.create_game()
+        gid = await service.create_game()
         ws = MockWebSocket()
         pid = await service.handle_player_connection(gid, ws)
 
@@ -123,8 +126,20 @@ class TestPlayerConnection:
         assert msg["game_state"] == GameState.WAITING
 
     @pytest.mark.asyncio
+    async def test_first_player_gets_session_token(self, service):
+        """player_assigned message should include a session token."""
+        gid = await service.create_game()
+        ws = MockWebSocket()
+        await service.handle_player_connection(gid, ws)
+
+        msg = ws.find("player_assigned")
+        assert "session_token" in msg
+        assert isinstance(msg["session_token"], str)
+        assert len(msg["session_token"]) > 0
+
+    @pytest.mark.asyncio
     async def test_second_player_starts_placing(self, service):
-        gid = service.create_game()
+        gid = await service.create_game()
         ws1, ws2 = await _connect_two(service, gid)
 
         p2_msg = ws2.find("player_assigned")
@@ -135,7 +150,7 @@ class TestPlayerConnection:
 
     @pytest.mark.asyncio
     async def test_third_player_rejected(self, service):
-        gid = service.create_game()
+        gid = await service.create_game()
         await _connect_two(service, gid)
 
         ws3 = MockWebSocket()
@@ -148,6 +163,79 @@ class TestPlayerConnection:
 
 
 # ---------------------------------------------------------------------------
+# Session token authentication (#13)
+# ---------------------------------------------------------------------------
+
+class TestSessionTokenAuth:
+
+    @pytest.mark.asyncio
+    async def test_reconnect_with_valid_token(self, service):
+        """A disconnected player can reclaim their slot with the correct token."""
+        gid, ws1, ws2 = await _setup_playing(service)
+        game = service.get_game(gid)
+        token2 = game.session_tokens["player2"]
+
+        await service.handle_player_disconnection(gid, "player2")
+
+        ws2_new = MockWebSocket()
+        pid = await service.handle_player_connection(gid, ws2_new, token=token2)
+        assert pid == "player2"
+
+    @pytest.mark.asyncio
+    async def test_reconnect_with_invalid_token_rejected(self, service):
+        """An invalid token must not reclaim a slot."""
+        gid, _, _ = await _setup_playing(service)
+
+        await service.handle_player_disconnection(gid, "player2")
+
+        ws2_new = MockWebSocket()
+        pid = await service.handle_player_connection(gid, ws2_new, token="wrong-token")
+        assert pid is None
+
+    @pytest.mark.asyncio
+    async def test_reconnect_without_token_rejected(self, service):
+        """After a player has connected once, reconnecting without token should fail."""
+        gid, _, _ = await _setup_playing(service)
+
+        await service.handle_player_disconnection(gid, "player2")
+
+        ws2_new = MockWebSocket()
+        pid = await service.handle_player_connection(gid, ws2_new)
+        assert pid is None
+
+    @pytest.mark.asyncio
+    async def test_cannot_steal_occupied_slot(self, service):
+        """A third connection with no token gets rejected when both slots are claimed."""
+        gid = await service.create_game()
+        await _connect_two(service, gid)
+
+        ws3 = MockWebSocket()
+        assert await service.handle_player_connection(gid, ws3) is None
+
+    @pytest.mark.asyncio
+    async def test_tokens_persist_across_disconnect(self, service):
+        """Session token survives disconnect and can be reused."""
+        gid = await service.create_game()
+        ws1, ws2 = await _connect_two(service, gid)
+        game = service.get_game(gid)
+        token1 = game.session_tokens["player1"]
+
+        await service.handle_player_disconnection(gid, "player1")
+        assert game.session_tokens["player1"] == token1  # token not cleared
+
+        ws1_new = MockWebSocket()
+        pid = await service.handle_player_connection(gid, ws1_new, token=token1)
+        assert pid == "player1"
+
+    @pytest.mark.asyncio
+    async def test_each_player_gets_unique_token(self, service):
+        gid = await service.create_game()
+        await _connect_two(service, gid)
+        game = service.get_game(gid)
+        assert game.session_tokens["player1"] != game.session_tokens["player2"]
+
+
+# ---------------------------------------------------------------------------
 # Plane placement
 # ---------------------------------------------------------------------------
 
@@ -155,7 +243,7 @@ class TestPlacement:
 
     @pytest.mark.asyncio
     async def test_place_valid_plane(self, service):
-        gid = service.create_game()
+        gid = await service.create_game()
         ws1, _ = await _connect_two(service, gid)
         ws1.clear()
 
@@ -166,7 +254,7 @@ class TestPlacement:
 
     @pytest.mark.asyncio
     async def test_overlapping_plane_rejected(self, service):
-        gid = service.create_game()
+        gid = await service.create_game()
         ws1, _ = await _connect_two(service, gid)
         ws1.clear()
 
@@ -247,14 +335,14 @@ class TestDisconnect:
 
     @pytest.mark.asyncio
     async def test_disconnect_clears_slot(self, service):
-        gid = service.create_game()
+        gid = await service.create_game()
         ws1, _ = await _connect_two(service, gid)
         await service.handle_player_disconnection(gid, "player1")
         assert service.get_game(gid).players["player1"] is None
 
     @pytest.mark.asyncio
     async def test_disconnect_notifies_opponent(self, service):
-        gid = service.create_game()
+        gid = await service.create_game()
         _, ws2 = await _connect_two(service, gid)
         ws2.clear()
         await service.handle_player_disconnection(gid, "player1")
@@ -263,11 +351,13 @@ class TestDisconnect:
     @pytest.mark.asyncio
     async def test_reconnect_sends_game_resumed(self, service):
         gid, ws1, ws2 = await _setup_playing(service)
+        game = service.get_game(gid)
+        token2 = game.session_tokens["player2"]
 
         await service.handle_player_disconnection(gid, "player2")
 
         ws2_new = MockWebSocket()
-        pid = await service.handle_player_connection(gid, ws2_new)
+        pid = await service.handle_player_connection(gid, ws2_new, token=token2)
         assert pid == "player2"
 
         assigned = ws2_new.find("player_assigned")
@@ -283,25 +373,29 @@ class TestDisconnect:
     async def test_reconnect_does_not_reset_state(self, service):
         """Reconnecting player2 must not revert the game to PLACING."""
         gid, _, ws2 = await _setup_playing(service)
+        game = service.get_game(gid)
+        token2 = game.session_tokens["player2"]
+
         await service.handle_player_disconnection(gid, "player2")
 
         ws2_new = MockWebSocket()
-        await service.handle_player_connection(gid, ws2_new)
+        await service.handle_player_connection(gid, ws2_new, token=token2)
 
-        game = service.get_game(gid)
         assert game.state == GameState.PLAYING
 
     @pytest.mark.asyncio
     async def test_reconnect_preserves_board(self, service):
         """Board damage should survive a disconnect/reconnect cycle."""
         gid, ws1, ws2 = await _setup_playing(service)
+        game = service.get_game(gid)
+        token2 = game.session_tokens["player2"]
 
         # P1 hits P2's cockpit
         await service.handle_attack(gid, "player1", 2, 0)
 
         await service.handle_player_disconnection(gid, "player2")
         ws2_new = MockWebSocket()
-        await service.handle_player_connection(gid, ws2_new)
+        await service.handle_player_connection(gid, ws2_new, token=token2)
 
         resumed = ws2_new.find("game_resumed")
         assert resumed["own_board"][0][2] == "head_hit"

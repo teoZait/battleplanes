@@ -95,6 +95,7 @@ class GameStore:
             "state": game.state.value,
             "current_turn": game.current_turn,
             "ready": game.ready,
+            "session_tokens": game.session_tokens,
             "created_at": game.created_at,
             "finished_at": game.finished_at,
         }
@@ -110,6 +111,7 @@ class GameStore:
         game.state = GameState(data["state"])
         game.current_turn = data["current_turn"]
         game.ready = data["ready"]
+        game.session_tokens = data.get("session_tokens", {"player1": None, "player2": None})
         game.created_at = data.get("created_at", time.time())
         game.finished_at = data.get("finished_at")
         # players stay None — they reconnect via WebSocket

@@ -50,6 +50,7 @@ class Game:
         self.state = GameState.WAITING
         self.current_turn = "player1"
         self.ready: Dict[str, bool] = {"player1": False, "player2": False}
+        self.session_tokens: Dict[str, Optional[str]] = {"player1": None, "player2": None}
         self.created_at: float = time.time()
         self.finished_at: Optional[float] = None
 
