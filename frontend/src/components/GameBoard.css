@@ -96,6 +96,10 @@
   box-shadow: 0 0 15px rgba(0, 210, 255, 0.6);
 }
 
+.cell.clickable {
+  touch-action: manipulation;
+}
+
 .cell.empty {
   background: linear-gradient(135deg, rgba(0, 191, 255, 0.2) 0%, rgba(0, 160, 215, 0.25) 100%);
 }
@@ -459,5 +463,48 @@
 
   .board-row .label-cell.row-label {
     margin-right: 6px;
+  }
+}
+
+/* Small phone screens */
+@media (max-width: 480px) {
+  .game-board {
+    padding: 6px;
+  }
+
+  .cell {
+    width: 28px;
+    height: 28px;
+  }
+
+  .fire,
+  .miss-marker {
+    font-size: 14px;
+  }
+
+  .label-corner,
+  .row-label {
+    width: 20px;
+    height: 28px;
+    font-size: 0.7rem;
+  }
+
+  .column-label {
+    width: 28px;
+    height: 20px;
+    font-size: 0.7rem;
+  }
+
+  .board-row.label-row {
+    margin-bottom: 4px;
+  }
+
+  .board-row .label-cell.row-label {
+    margin-right: 4px;
+  }
+
+  .cockpit {
+    width: 12px;
+    height: 12px;
   }
 }

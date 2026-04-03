@@ -269,5 +269,53 @@
 
   .copy-btn {
     width: 100%;
+    padding: 14px 20px;
+  }
+}
+
+/* Small phone screens */
+@media (max-width: 480px) {
+  .game-info {
+    gap: 10px;
+  }
+
+  .game-id-box {
+    padding: 12px 15px;
+    max-width: 100%;
+  }
+
+  .game-id-label {
+    font-size: 0.9rem;
+  }
+
+  .game-id-value {
+    font-size: 0.85rem;
+    padding: 8px 10px;
+  }
+
+  .info-card {
+    padding: 12px 15px;
+    gap: 10px;
+  }
+
+  .status, .player-id, .turn {
+    font-size: 0.9rem;
+  }
+
+  .label {
+    font-size: 0.8rem;
+  }
+
+  .message-box {
+    padding: 12px 15px;
+  }
+
+  .message-box p {
+    font-size: 0.85rem;
+  }
+
+  .connection-status {
+    padding: 10px 15px;
+    font-size: 0.85rem;
   }
 }

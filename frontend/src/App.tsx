@@ -3,6 +3,7 @@ import './App.css';
 import GameBoard from './components/GameBoard';
 import PlanePlacement from './components/PlanePlacement';
 import GameInfo from './components/GameInfo';
+import ZoomableBoard from './components/ZoomableBoard';
 import { useGameWebSocket, CellStatus } from './hooks/UseGameWebSocket';
 import {
   gameReducer,
@@ -154,24 +155,28 @@ function App() {
             <div className="game-boards">
               <div className="board-container">
                 <h3>Your Airspace</h3>
-                <GameBoard
-                  board={state.ownBoard}
-                  onCellClick={(x, y) =>
-                    handleCellClick(x, y, true)
-                  }
-                  isOwnBoard
-                />
+                <ZoomableBoard>
+                  <GameBoard
+                    board={state.ownBoard}
+                    onCellClick={(x, y) =>
+                      handleCellClick(x, y, true)
+                    }
+                    isOwnBoard
+                  />
+                </ZoomableBoard>
               </div>
               <div className="board-container">
                 <h3>Enemy Airspace</h3>
-                <GameBoard
-                  board={state.opponentBoard}
-                  onCellClick={(x, y) =>
-                    handleCellClick(x, y, false)
-                  }
-                  isOwnBoard={false}
-                  isMyTurn={state.gameState === 'playing' ? state.playerId === state.currentTurn : undefined}
-                />
+                <ZoomableBoard>
+                  <GameBoard
+                    board={state.opponentBoard}
+                    onCellClick={(x, y) =>
+                      handleCellClick(x, y, false)
+                    }
+                    isOwnBoard={false}
+                    isMyTurn={state.gameState === 'playing' ? state.playerId === state.currentTurn : undefined}
+                  />
+                </ZoomableBoard>
               </div>
             </div>
           )}

@@ -22,8 +22,9 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
   const [orientation, setOrientation] = useState<'up' | 'down' | 'left' | 'right'>('up');
   const [hoveredCells, setHoveredCells] = useState<{ x: number; y: number; isValid: boolean }[]>([]);
   const [shaking, setShaking] = useState(false);
+  const [touchPreviewPos, setTouchPreviewPos] = useState<{ x: number; y: number } | null>(null);
 
-  const previewPlane = async (head_x: number, head_y: number) => {
+  const previewPlane = (head_x: number, head_y: number) => {
     const { positions } = getPlanePositions(head_x, head_y, orientation);
 
     const isValid = positions.every((pos: any) =>
@@ -46,16 +47,25 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
   const handleCellClick = (x: number, y: number) => {
     if (placedPlanes.length >= 2) return;
 
-    const invalidCells = hoveredCells.filter((cell: { isValid: boolean }) => !cell.isValid);
-    if (invalidCells.length > 0) {
+    // Compute positions directly (works for both mouse and touch paths)
+    const { positions } = getPlanePositions(x, y, orientation);
+    const allValid = positions.every((pos: any) =>
+      pos.x >= 0 && pos.x < 10 && pos.y >= 0 && pos.y < 10 && board[pos.y][pos.x] === 'empty'
+    );
+
+    if (!allValid) {
+      setHoveredCells(
+        positions.map((pos: { x: number; y: number }) => ({ x: pos.x, y: pos.y, isValid: false }))
+      );
       setShaking(true);
-      setTimeout(() => setShaking(false), 500);
+      setTimeout(() => {
+        setShaking(false);
+        setHoveredCells([]);
+      }, 500);
       return;
     }
 
-    const positions = hoveredCells.map((cell: { x: number; y: number }) => ({ x: cell.x, y: cell.y }));
     const newBoard = board.map((row: CellStatus[]) => [...row]);
-
     positions.forEach((pos: { x: number; y: number }, index: number) => {
       if (index === 0) {
         newBoard[pos.y][pos.x] = 'head';
@@ -65,12 +75,23 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
     });
 
     setBoard(newBoard);
-    setPlacedPlanes([...placedPlanes, {
-      head_x: x,
-      head_y: y,
-      orientation: orientation
-    }]);
+    setPlacedPlanes([...placedPlanes, { head_x: x, head_y: y, orientation }]);
     setHoveredCells([]);
+    setTouchPreviewPos(null);
+  };
+
+  const handleCellTouch = (x: number, y: number) => {
+    if (placedPlanes.length >= 2) return;
+
+    // Second tap on same cell: place the plane
+    if (touchPreviewPos?.x === x && touchPreviewPos?.y === y) {
+      handleCellClick(x, y);
+      return;
+    }
+
+    // First tap: show preview only
+    previewPlane(x, y);
+    setTouchPreviewPos({ x, y });
   };
 
   const handleConfirm = () => {
@@ -105,7 +126,7 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
       <div className="placement-info">
         <h2>Place Your Planes</h2>
         <p>Place {2 - placedPlanes.length} more plane{placedPlanes.length === 1 ? '' : 's'}</p>
-        <p className="instruction">Hover to preview, click the head position to place</p>
+        <p className="instruction">Tap or hover the head position to preview, then tap again to place</p>
         <button
           onClick={rotateOrientation}
           className="btn btn-rotate"
@@ -126,6 +147,10 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
                   onClick={() => handleCellClick(x, y)}
                   onMouseEnter={() => previewPlane(x, y)}
                   onMouseLeave={() => setHoveredCells([])}
+                  onTouchEnd={(e) => {
+                    e.preventDefault();
+                    handleCellTouch(x, y);
+                  }}
                 >
                   {/* Show already placed planes */}
                   {cell === 'plane' && (

@@ -278,4 +278,73 @@
   .cockpit {
     font-size: 16px;
   }
+
+  .btn-rotate {
+    padding: 14px 28px;
+    font-size: 1rem;
+  }
+
+  .placement-actions .btn {
+    padding: 14px 28px;
+    font-size: 1rem;
+  }
+}
+
+.placement-board .cell {
+  touch-action: manipulation;
+}
+
+/* Small phone screens */
+@media (max-width: 480px) {
+  .plane-placement {
+    padding: 10px;
+    gap: 15px;
+  }
+
+  .placement-info h2 {
+    font-size: 1.3rem;
+  }
+
+  .placement-info p {
+    font-size: 0.9rem;
+  }
+
+  .placement-board {
+    padding: 6px;
+  }
+
+  .placement-board .cell {
+    width: 28px;
+    height: 28px;
+  }
+
+  .cockpit {
+    width: 12px;
+    height: 12px;
+  }
+
+  .preview-cockpit {
+    width: 10px;
+    height: 10px;
+  }
+
+  .plane-list {
+    min-width: unset;
+    width: 100%;
+    padding: 15px;
+  }
+
+  .btn-rotate {
+    padding: 14px 24px;
+    width: 100%;
+  }
+
+  .placement-actions {
+    width: 100%;
+  }
+
+  .placement-actions .btn {
+    flex: 1;
+    padding: 14px 16px;
+  }
 }

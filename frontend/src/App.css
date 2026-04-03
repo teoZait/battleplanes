@@ -153,9 +153,74 @@ h1::before {
   .game-boards {
     flex-direction: column;
     align-items: center;
+    gap: 25px;
   }
-  
+
   .join-game input {
     min-width: 250px;
+  }
+
+  .btn {
+    padding: 16px 35px;
+    font-size: 18px;
+  }
+
+  .board-container {
+    padding: 12px;
+  }
+}
+
+/* Small phone screens */
+@media (max-width: 480px) {
+  .App {
+    padding: 10px;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+    margin-bottom: 15px;
+    letter-spacing: 1px;
+  }
+
+  h1::before {
+    width: 40px;
+    margin: 0 auto 10px;
+  }
+
+  .menu {
+    margin-top: 30px;
+    gap: 20px;
+  }
+
+  .join-game input {
+    min-width: unset;
+    width: 100%;
+    padding: 14px 16px;
+  }
+
+  .join-game {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .btn {
+    padding: 16px 24px;
+    font-size: 16px;
+    width: 100%;
+  }
+
+  .game-boards {
+    gap: 20px;
+    margin-top: 15px;
+  }
+
+  .board-container {
+    padding: 8px;
+    width: 100%;
+  }
+
+  .board-container h3 {
+    font-size: 1.2rem;
+    margin-bottom: 10px;
   }
 }
