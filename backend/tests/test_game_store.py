@@ -2,13 +2,12 @@
 Tests for GameStore serialisation/deserialisation and GameService persistence
 integration.
 
-These tests do NOT require a running Redis instance — they exercise the
-serialize/deserialize logic directly and use a thin in-memory fake for the
-write-through integration.
+These tests do NOT require a running Redis instance — they use FakeRedis
+(defined in conftest) for the write-through integration.
 """
+import fnmatch
 import json
 import pytest
-from unittest.mock import MagicMock
 
 from domain.models import Game, Plane
 from domain.value_objects import GameState, PlaneOrientation
@@ -22,6 +21,44 @@ from application.game_service import GameService
 
 PLANE_1_DATA = {"head_x": 2, "head_y": 0, "orientation": "up", "type": "place_plane"}
 PLANE_2_DATA = {"head_x": 7, "head_y": 0, "orientation": "up", "type": "place_plane"}
+
+
+class _FakeRedis:
+    """Local copy for store-level tests that bypass __init__."""
+
+    def __init__(self):
+        self.store: dict[str, str] = {}
+        self.sets: dict[str, set[str]] = {}
+
+    async def ping(self):
+        return True
+
+    async def set(self, key, value, ex=None):
+        self.store[key] = value
+
+    async def get(self, key):
+        return self.store.get(key)
+
+    async def mget(self, keys):
+        return [self.store.get(k) for k in keys]
+
+    async def delete(self, key):
+        self.store.pop(key, None)
+
+    async def sadd(self, key, *members):
+        self.sets.setdefault(key, set()).update(members)
+
+    async def srem(self, key, *members):
+        if key in self.sets:
+            self.sets[key] -= set(members)
+
+    async def smembers(self, key):
+        return set(self.sets.get(key, set()))
+
+    async def scan_iter(self, match="*"):
+        for k in list(self.store.keys()):
+            if fnmatch.fnmatch(k, match):
+                yield k
 
 
 def _make_playing_game(game_id: str = "test-123") -> Game:
@@ -152,30 +189,8 @@ class TestSerialisation:
 
 
 # ---------------------------------------------------------------------------
-# GameStore with async mocked Redis
+# GameStore with async FakeRedis
 # ---------------------------------------------------------------------------
-
-class _FakeRedis:
-    """Minimal async in-memory stand-in for redis.asyncio.Redis."""
-
-    def __init__(self):
-        self.store: dict[str, str] = {}
-
-    async def set(self, key, value, ex=None):
-        self.store[key] = value
-
-    async def get(self, key):
-        return self.store.get(key)
-
-    async def delete(self, key):
-        self.store.pop(key, None)
-
-    async def scan_iter(self, match="*"):
-        import fnmatch
-        for k in list(self.store.keys()):
-            if fnmatch.fnmatch(k, match):
-                yield k
-
 
 class TestGameStoreOperations:
 
@@ -183,6 +198,11 @@ class TestGameStoreOperations:
         store = GameStore.__new__(GameStore)
         store._redis = _FakeRedis()
         return store
+
+    @pytest.mark.asyncio
+    async def test_ping(self):
+        store = self._make_store()
+        await store.ping()  # should not raise
 
     @pytest.mark.asyncio
     async def test_save_and_load(self):
@@ -211,18 +231,49 @@ class TestGameStoreOperations:
         assert set(games.keys()) == {"g1", "g2"}
 
     @pytest.mark.asyncio
+    async def test_load_all_empty(self):
+        store = self._make_store()
+        games = await store.load_all()
+        assert games == {}
+
+    @pytest.mark.asyncio
+    async def test_load_all_cleans_expired_ids(self):
+        """If a game key expired via TTL but the ID lingers in the set,
+        load_all should return the remaining games and prune the stale ID."""
+        store = self._make_store()
+        await store.save(Game("alive"))
+        await store.save(Game("expired"))
+
+        # Simulate TTL expiry: remove the key but leave the set entry.
+        del store._redis.store["game:expired"]
+
+        games = await store.load_all()
+        assert set(games.keys()) == {"alive"}
+        # The stale ID should have been removed from the set.
+        members = await store._redis.smembers("active_games")
+        assert "expired" not in members
+
+    @pytest.mark.asyncio
+    async def test_save_adds_to_active_set(self):
+        store = self._make_store()
+        await store.save(Game("g1"))
+        members = await store._redis.smembers("active_games")
+        assert "g1" in members
+
+    @pytest.mark.asyncio
+    async def test_delete_removes_from_active_set(self):
+        store = self._make_store()
+        await store.save(Game("g1"))
+        await store.delete("g1")
+        members = await store._redis.smembers("active_games")
+        assert "g1" not in members
+
+    @pytest.mark.asyncio
     async def test_delete(self):
         store = self._make_store()
         await store.save(Game("del-me"))
         await store.delete("del-me")
         assert await store.load("del-me") is None
-
-    @pytest.mark.asyncio
-    async def test_no_op_without_redis(self):
-        store = GameStore(redis_url=None)
-        await store.save(Game("x"))
-        assert await store.load("x") is None
-        assert await store.load_all() == {}
 
 
 # ---------------------------------------------------------------------------
@@ -317,8 +368,21 @@ class TestServicePersistence:
         await service.shutdown()
 
     @pytest.mark.asyncio
-    async def test_works_without_store(self):
-        """GameService must work fine when no store is provided."""
-        service = GameService(game_store=None)
-        gid = await service.create_game()
-        assert service.get_game(gid) is not None
+    async def test_get_game_falls_back_to_redis(self):
+        """get_game should load from Redis when the game is not in the local cache."""
+        service, store = self._make_service()
+        # Save a game directly to Redis (bypassing the service cache)
+        game = _make_playing_game("redis-only")
+        await store.save(game)
+
+        # The game is NOT in service.games
+        assert "redis-only" not in service.games
+
+        # get_game should find it via Redis fallback
+        loaded = await service.get_game("redis-only")
+        assert loaded is not None
+        assert loaded.id == "redis-only"
+        assert loaded.state == GameState.PLAYING
+
+        # After fallback, it should be cached locally
+        assert "redis-only" in service.games

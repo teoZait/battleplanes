@@ -12,8 +12,7 @@ class ConnectionManager:
         self.active_connections: Dict[str, Dict[str, WebSocket]] = {}
 
     async def connect(self, game_id: str, player_id: str, websocket: WebSocket):
-        """Accept and register a new WebSocket connection"""
-        await websocket.accept()
+        """Register an already-accepted WebSocket connection."""
         if game_id not in self.active_connections:
             self.active_connections[game_id] = {}
         self.active_connections[game_id][player_id] = websocket

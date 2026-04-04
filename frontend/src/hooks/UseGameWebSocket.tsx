@@ -20,8 +20,10 @@ export type ClientMessage =
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const WS_URL = API_URL.replace('http', 'ws');
+// Derive the WebSocket URL from the current page origin so connections
+// go through nginx (same-origin) and avoid CORS issues.
+const WS_URL = import.meta.env.VITE_WS_URL
+  || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
 
 const BACKOFF_BASE = 1000;
 const BACKOFF_MAX = 30000;
@@ -41,30 +43,44 @@ export function useGameWebSocket(params: {
   const sessionTokenRef = useRef<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
 
+  // Persist session tokens in localStorage so they survive tab closes.
+  // Without this, a returning player sends token: null and the server
+  // rejects the connection because the slot already has a token assigned.
+  const storageKey = params.gameId ? `game_token_${params.gameId}` : null;
+
   const connect = useCallback(() => {
     if (!params.gameId) return;
 
     const isReconnect = retryCountRef.current > 0;
     setConnectionStatus(isReconnect ? 'reconnecting' : 'connecting');
 
-    // Include session token on reconnections so the server can verify identity
-    const tokenParam = sessionTokenRef.current
-      ? `?token=${encodeURIComponent(sessionTokenRef.current)}`
-      : '';
-    const ws = new WebSocket(`${WS_URL}/ws/${params.gameId}${tokenParam}`);
+    const ws = new WebSocket(`${WS_URL}/ws/${params.gameId}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      retryCountRef.current = 0;
-      setConnectionStatus('connected');
+      // Send session token as the first message (not in URL, to keep it out of logs)
+      ws.send(JSON.stringify({
+        type: 'auth',
+        token: sessionTokenRef.current,
+      }));
       params.onOpen?.();
     };
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data) as ServerMessage;
-      // Capture session token from initial assignment for reconnection
-      if (data.type === 'player_assigned' && data.session_token) {
-        sessionTokenRef.current = data.session_token;
+      // Capture session token from initial assignment for reconnection.
+      // Only reset the retry counter here — after the server has accepted
+      // the auth.  Resetting in onopen would cause an infinite retry loop
+      // because onopen fires before the server validates the token.
+      if (data.type === 'player_assigned') {
+        if (data.session_token) {
+          sessionTokenRef.current = data.session_token;
+          if (storageKey) {
+            try { localStorage.setItem(storageKey, data.session_token); } catch {}
+          }
+        }
+        retryCountRef.current = 0;
+        setConnectionStatus('connected');
       }
       params.onMessage(data);
     };
@@ -105,6 +121,11 @@ export function useGameWebSocket(params: {
   useEffect(() => {
     intentionalCloseRef.current = false;
     retryCountRef.current = 0;
+
+    // Restore session token from localStorage so returning players can reclaim their slot
+    if (storageKey) {
+      try { sessionTokenRef.current = localStorage.getItem(storageKey); } catch {}
+    }
 
     connect();
 

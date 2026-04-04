@@ -48,6 +48,16 @@ class GetBoardsMessage(BaseModel):
     type: Literal["get_boards"]
 
 
+class AuthMessage(BaseModel):
+    """First message sent by the client after WebSocket open.
+
+    ``token`` is ``null`` for brand-new players and a string for
+    reconnections.
+    """
+    type: Literal["auth"]
+    token: str | None = None
+
+
 ClientMessage = Union[PlacePlaneMessage, AttackMessage, GetBoardsMessage]
 
 

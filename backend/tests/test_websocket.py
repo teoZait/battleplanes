@@ -5,6 +5,7 @@ Tests cover: connection lifecycle, plane placement, attack mechanics,
 complete game to victory, disconnection/reconnection, and invalid messages.
 """
 import contextlib
+import json
 import pytest
 from fastapi.testclient import TestClient
 import main as main_module
@@ -19,6 +20,7 @@ from main import app, game_service
 def reset_state():
     """Reset all server state between tests."""
     game_service.games.clear()
+    game_service._game_store._redis.store.clear()
     game_service.connection_manager.active_connections.clear()
     main_module._rate_limit_store.clear()
 
@@ -33,10 +35,10 @@ def two_player_game(client):
     """Create a game, connect two players, and consume setup messages."""
     game_id = _create_game(client)
     with contextlib.ExitStack() as stack:
-        ws1 = stack.enter_context(client.websocket_connect(f"/ws/{game_id}"))
+        ws1 = stack.enter_context(_ws_connect(client, game_id))
         ws1.receive_json()  # player_assigned
 
-        ws2 = stack.enter_context(client.websocket_connect(f"/ws/{game_id}"))
+        ws2 = stack.enter_context(_ws_connect(client, game_id))
         ws2.receive_json()  # player_assigned
         ws1.receive_json()  # game_ready
         ws2.receive_json()  # game_ready
@@ -60,6 +62,32 @@ def _create_game(client) -> str:
     res = client.post("/game/create")
     assert res.status_code == 200
     return res.json()["game_id"]
+
+
+class _AuthWebSocket:
+    """Wraps Starlette's WebSocketTestSession to auto-send the auth handshake.
+
+    Use as a context manager — identical to ``client.websocket_connect()``
+    but sends ``{"type": "auth", "token": ...}`` immediately after open.
+    """
+
+    def __init__(self, client, game_id, token=None, **kwargs):
+        self._cm = client.websocket_connect(f"/ws/{game_id}", **kwargs)
+        self._token = token
+        self._ws = None
+
+    def __enter__(self):
+        self._ws = self._cm.__enter__()
+        self._ws.send_json({"type": "auth", "token": self._token})
+        return self._ws
+
+    def __exit__(self, *exc):
+        return self._cm.__exit__(*exc)
+
+
+def _ws_connect(client, game_id, token=None, **kwargs):
+    """Return an _AuthWebSocket context manager."""
+    return _AuthWebSocket(client, game_id, token=token, **kwargs)
 
 
 # Two non-overlapping UP-orientation planes:
@@ -122,7 +150,7 @@ class TestConnection:
 
     def test_first_player_assigned(self, client):
         game_id = _create_game(client)
-        with client.websocket_connect(f"/ws/{game_id}") as ws:
+        with _ws_connect(client, game_id) as ws:
             msg = ws.receive_json()
             assert msg["type"] == "player_assigned"
             assert msg["player_id"] == "player1"
@@ -131,9 +159,9 @@ class TestConnection:
 
     def test_second_player_triggers_placing(self, client):
         game_id = _create_game(client)
-        with client.websocket_connect(f"/ws/{game_id}") as ws1:
+        with _ws_connect(client, game_id) as ws1:
             ws1.receive_json()
-            with client.websocket_connect(f"/ws/{game_id}") as ws2:
+            with _ws_connect(client, game_id) as ws2:
                 p2 = ws2.receive_json()
                 assert p2["type"] == "player_assigned"
                 assert p2["player_id"] == "player2"
@@ -141,9 +169,9 @@ class TestConnection:
 
     def test_game_ready_broadcast(self, client):
         game_id = _create_game(client)
-        with client.websocket_connect(f"/ws/{game_id}") as ws1:
+        with _ws_connect(client, game_id) as ws1:
             ws1.receive_json()
-            with client.websocket_connect(f"/ws/{game_id}") as ws2:
+            with _ws_connect(client, game_id) as ws2:
                 ws2.receive_json()
                 assert ws1.receive_json()["type"] == "game_ready"
                 assert ws2.receive_json()["type"] == "game_ready"
@@ -156,7 +184,7 @@ class TestConnection:
     def test_third_player_rejected(self, two_player_game, client):
         game_id, _, _ = two_player_game
         with pytest.raises(Exception):
-            with client.websocket_connect(f"/ws/{game_id}") as ws3:
+            with _ws_connect(client, game_id) as ws3:
                 ws3.receive_json()
 
 
@@ -316,9 +344,9 @@ class TestDisconnect:
 
     def test_opponent_notified_on_disconnect(self, client):
         game_id = _create_game(client)
-        with client.websocket_connect(f"/ws/{game_id}") as ws1:
+        with _ws_connect(client, game_id) as ws1:
             ws1.receive_json()  # player_assigned
-            with client.websocket_connect(f"/ws/{game_id}") as ws2:
+            with _ws_connect(client, game_id) as ws2:
                 ws2.receive_json()  # player_assigned
                 ws1.receive_json()  # game_ready
                 ws2.receive_json()  # game_ready
@@ -330,22 +358,20 @@ class TestDisconnect:
         game_id = _create_game(client)
         token1 = token2 = None
         with contextlib.ExitStack() as stack:
-            ws1 = stack.enter_context(client.websocket_connect(f"/ws/{game_id}"))
+            ws1 = stack.enter_context(_ws_connect(client, game_id))
             p1 = ws1.receive_json()
             token1 = p1["session_token"]
 
-            ws2 = stack.enter_context(client.websocket_connect(f"/ws/{game_id}"))
+            ws2 = stack.enter_context(_ws_connect(client, game_id))
             p2 = ws2.receive_json()
             token2 = p2["session_token"]
             ws1.receive_json()  # game_ready
             ws2.receive_json()  # game_ready
             _place_all_planes(ws1, ws2)
 
-        # Both disconnected; reconnect with session tokens
+        # Both disconnected; reconnect with session tokens via auth message
         with contextlib.ExitStack() as stack:
-            ws1 = stack.enter_context(
-                client.websocket_connect(f"/ws/{game_id}?token={token1}")
-            )
+            ws1 = stack.enter_context(_ws_connect(client, game_id, token=token1))
             p1 = ws1.receive_json()
             assert p1["type"] == "player_assigned"
             assert p1["game_state"] == "playing"
@@ -356,9 +382,7 @@ class TestDisconnect:
             assert len(resumed1["opponent_board"]) == 10
             assert resumed1["current_turn"] == "player1"
 
-            ws2 = stack.enter_context(
-                client.websocket_connect(f"/ws/{game_id}?token={token2}")
-            )
+            ws2 = stack.enter_context(_ws_connect(client, game_id, token=token2))
             p2 = ws2.receive_json()
             assert p2["type"] == "player_assigned"
             assert p2["player_id"] == "player2"
@@ -369,9 +393,9 @@ class TestDisconnect:
     def test_reconnect_preserves_board_state(self, client):
         """After attacks, a reconnecting player should see the correct board."""
         game_id = _create_game(client)
-        with client.websocket_connect(f"/ws/{game_id}") as ws1:
+        with _ws_connect(client, game_id) as ws1:
             ws1.receive_json()  # player_assigned
-            with client.websocket_connect(f"/ws/{game_id}") as ws2:
+            with _ws_connect(client, game_id) as ws2:
                 p2 = ws2.receive_json()  # player_assigned
                 token2 = p2["session_token"]
                 ws1.receive_json()  # game_ready
@@ -386,9 +410,7 @@ class TestDisconnect:
             ws1.receive_json()  # player_disconnected
 
             # Reconnect player2 with token and verify board reflects the head_hit
-            with client.websocket_connect(
-                f"/ws/{game_id}?token={token2}"
-            ) as ws2_new:
+            with _ws_connect(client, game_id, token=token2) as ws2_new:
                 ws2_new.receive_json()  # player_assigned
                 resumed = ws2_new.receive_json()
                 assert resumed["type"] == "game_resumed"
@@ -429,7 +451,7 @@ class TestSessionTokenAuth:
 
     def test_player_assigned_includes_session_token(self, client):
         game_id = _create_game(client)
-        with client.websocket_connect(f"/ws/{game_id}") as ws:
+        with _ws_connect(client, game_id) as ws:
             msg = ws.receive_json()
             assert msg["type"] == "player_assigned"
             assert "session_token" in msg
@@ -438,32 +460,46 @@ class TestSessionTokenAuth:
 
     def test_reconnect_with_invalid_token_rejected(self, client):
         game_id = _create_game(client)
-        with client.websocket_connect(f"/ws/{game_id}") as ws1:
+        with _ws_connect(client, game_id) as ws1:
             ws1.receive_json()
-            with client.websocket_connect(f"/ws/{game_id}") as ws2:
+            with _ws_connect(client, game_id) as ws2:
                 ws2.receive_json()
                 ws1.receive_json()  # game_ready
                 ws2.receive_json()  # game_ready
 
         # Both disconnected; try to reconnect with wrong token
         with pytest.raises(Exception):
-            with client.websocket_connect(
-                f"/ws/{game_id}?token=invalid-token"
-            ) as ws:
+            with _ws_connect(client, game_id, token="invalid-token") as ws:
                 ws.receive_json()
 
     def test_reconnect_without_token_on_claimed_slot_rejected(self, client):
         game_id = _create_game(client)
-        with client.websocket_connect(f"/ws/{game_id}") as ws1:
+        with _ws_connect(client, game_id) as ws1:
             ws1.receive_json()
-            with client.websocket_connect(f"/ws/{game_id}") as ws2:
+            with _ws_connect(client, game_id) as ws2:
                 ws2.receive_json()
                 ws1.receive_json()
                 ws2.receive_json()
 
         # Both disconnected; try to reconnect without token (slots have tokens)
         with pytest.raises(Exception):
+            with _ws_connect(client, game_id) as ws:
+                ws.receive_json()
+
+    def test_invalid_auth_message_rejected(self, client):
+        """Sending garbage instead of an auth message should close the connection."""
+        game_id = _create_game(client)
+        with pytest.raises(Exception):
             with client.websocket_connect(f"/ws/{game_id}") as ws:
+                ws.send_text("not-json")
+                ws.receive_json()
+
+    def test_wrong_auth_type_rejected(self, client):
+        """Sending a valid JSON message with wrong type should close the connection."""
+        game_id = _create_game(client)
+        with pytest.raises(Exception):
+            with client.websocket_connect(f"/ws/{game_id}") as ws:
+                ws.send_json({"type": "attack", "x": 0, "y": 0})
                 ws.receive_json()
 
 
@@ -543,10 +579,7 @@ class TestWebSocketOriginValidation:
     def test_allowed_origin_connects(self, client):
         """A WebSocket from an allowed origin should connect normally."""
         game_id = _create_game(client)
-        with client.websocket_connect(
-            f"/ws/{game_id}",
-            headers={"Origin": "http://localhost:3000"},
-        ) as ws:
+        with _ws_connect(client, game_id, headers={"Origin": "http://localhost:3000"}) as ws:
             msg = ws.receive_json()
             assert msg["type"] == "player_assigned"
 
@@ -564,7 +597,7 @@ class TestWebSocketOriginValidation:
         """Non-browser clients without an Origin header should connect."""
         game_id = _create_game(client)
         # TestClient doesn't send Origin by default
-        with client.websocket_connect(f"/ws/{game_id}") as ws:
+        with _ws_connect(client, game_id) as ws:
             msg = ws.receive_json()
             assert msg["type"] == "player_assigned"
 

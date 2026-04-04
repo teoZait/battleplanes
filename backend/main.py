@@ -13,14 +13,14 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Requ
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from application.game_service import GameService
-from application.schemas import parse_client_message
+from application.schemas import parse_client_message, AuthMessage
 from infrastructure.game_store import GameStore
 
 logger = logging.getLogger(__name__)
 
-# Persistence (optional — active only when REDIS_URL is set)
-redis_url = os.environ.get("REDIS_URL")
-game_store = GameStore(redis_url) if redis_url else None
+# Persistence — Redis is required; defaults to localhost for local dev.
+redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+game_store = GameStore(redis_url)
 
 # Application service (singleton)
 game_service = GameService(game_store=game_store)
@@ -59,8 +59,10 @@ app = FastAPI(title="Warplanes API", lifespan=lifespan)
 # CORS middleware - restrict to configured origins
 allowed_origins = os.environ.get(
     "CORS_ALLOWED_ORIGINS",
-    "http://localhost:3000,http://localhost:5173,http://localhost:80,http://localhost"
+    "http://localhost:3000,http://localhost:5173,http://localhost:80,http://localhost,https://localhost"
 ).split(",")
+
+logger.info("Allowed CORS origins: %s", allowed_origins)
 
 app.add_middleware(
     CORSMiddleware,
@@ -69,6 +71,36 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
+
+
+# Starlette's CORSMiddleware rejects WebSocket upgrades with 403 if the
+# Origin doesn't match — before our endpoint even runs.  We handle
+# WebSocket origin validation ourselves in _check_ws_origin, so bypass
+# CORS for WebSocket scopes by stripping the Origin header before it
+# reaches CORSMiddleware.
+class _BypassCorsForWebSocket:
+    """ASGI middleware: removes Origin from WebSocket headers so
+    CORSMiddleware ignores them.  Stashes the original value in
+    scope["ws_origin"] so _check_ws_origin can still validate it."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "websocket":
+            origin = None
+            cleaned = []
+            for k, v in scope["headers"]:
+                if k == b"origin":
+                    origin = v.decode("latin-1")
+                else:
+                    cleaned.append((k, v))
+            scope = dict(scope, headers=cleaned, ws_origin=origin)
+        await self.app(scope, receive, send)
+
+
+# Added after CORSMiddleware so it wraps the outermost layer and runs first.
+app.add_middleware(_BypassCorsForWebSocket)
 
 
 def _get_client_ip(request: Request) -> str:
@@ -124,7 +156,7 @@ async def create_game():
 @app.get("/game/{game_id}")
 async def get_game(game_id: str):
     """Get game information"""
-    game_info = game_service.get_game_info(game_id)
+    game_info = await game_service.get_game_info(game_id)
     
     if not game_info:
         raise HTTPException(status_code=404, detail="Game not found")
@@ -138,8 +170,12 @@ _WS_MAX_MSG_SIZE = 1024  # bytes (valid game messages are < 200 bytes)
 
 
 def _check_ws_origin(websocket: WebSocket) -> bool:
-    """Validate the WebSocket Origin header against allowed CORS origins."""
-    origin = websocket.headers.get("origin")
+    """Validate the WebSocket Origin against allowed CORS origins.
+
+    The origin is stashed in scope["ws_origin"] by _BypassCorsForWebSocket
+    (stripped from headers so CORSMiddleware doesn't interfere).
+    """
+    origin = websocket.scope.get("ws_origin")
     if origin is None:
         return True  # non-browser clients (curl, game bots) don't send Origin
     return origin in allowed_origins
@@ -154,12 +190,22 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
         return
 
     # Verify game exists
-    if not game_service.get_game(game_id):
+    if not await game_service.get_game(game_id):
         await websocket.close(code=1008)
         return
 
-    # #13 — Extract session token from query params for reconnection
-    token = websocket.query_params.get("token")
+    # Accept the connection, then wait for the client's auth message.
+    # The token travels inside the WebSocket frame, not in the URL,
+    # so it stays out of browser history, proxy logs, and Referer headers.
+    await websocket.accept()
+    try:
+        raw_auth = await asyncio.wait_for(websocket.receive_text(), timeout=5.0)
+        auth_data = json.loads(raw_auth)
+        auth_msg = AuthMessage.model_validate(auth_data)
+        token = auth_msg.token
+    except (asyncio.TimeoutError, json.JSONDecodeError, Exception):
+        await websocket.close(code=1008)
+        return
 
     # Connect player (token verified inside game_service)
     player_id = await game_service.handle_player_connection(
@@ -222,7 +268,7 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
                 await game_service.handle_attack(game_id, player_id, message.x, message.y)
 
             elif message.type == "get_boards":
-                game = game_service.get_game(game_id)
+                game = await game_service.get_game(game_id)
                 if game:
                     await game_service.connection_manager.send_to_player(game_id, player_id, {
                         "type": "boards_update",
@@ -244,4 +290,4 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000, ws_ping_interval=30, ws_ping_timeout=10)

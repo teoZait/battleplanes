@@ -24,7 +24,7 @@ _CLEANUP_INTERVAL = 5 * 60       # run every 5 minutes
 class GameService:
     """Application service for game-related operations"""
 
-    def __init__(self, game_store: Optional[GameStore] = None):
+    def __init__(self, game_store: GameStore):
         self.connection_manager = ConnectionManager()
         self._game_store = game_store
         self.games: Dict[str, Game] = {}
@@ -38,9 +38,9 @@ class GameService:
         return self._game_locks[game_id]
 
     async def initialize(self) -> None:
-        """Load persisted games from Redis and start background cleanup."""
-        if self._game_store and self._game_store.available:
-            self.games = await self._game_store.load_all()
+        """Verify Redis, load persisted games, and start background cleanup."""
+        await self._game_store.ping()
+        self.games = await self._game_store.load_all()
         self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
 
     async def shutdown(self) -> None:
@@ -70,14 +70,13 @@ class GameService:
             self._game_locks.pop(game_id, None)
             if game_id in self.connection_manager.active_connections:
                 del self.connection_manager.active_connections[game_id]
-            if self._game_store:
-                await self._game_store.delete(game_id)
+            await self._game_store.delete(game_id)
         if stale_ids:
             logger.info("Cleaned up %d stale game(s)", len(stale_ids))
 
     async def _persist(self, game_id: str) -> None:
-        """Write-through: save current game state to Redis (no-op without store)."""
-        if self._game_store and game_id in self.games:
+        """Write-through: save current game state to Redis."""
+        if game_id in self.games:
             await self._game_store.save(self.games[game_id])
 
     async def create_game(self) -> str:
@@ -87,17 +86,24 @@ class GameService:
         await self._persist(game_id)
         return game_id
     
-    def get_game(self, game_id: str) -> Optional[Game]:
-        """Retrieve a game by ID"""
-        return self.games.get(game_id)
-    
-    def get_game_info(self, game_id: str) -> Optional[dict]:
+    async def get_game(self, game_id: str) -> Optional[Game]:
+        """Retrieve a game by ID, falling back to Redis on cache miss."""
+        game = self.games.get(game_id)
+        if game is not None:
+            return game
+        # Cache miss — try loading from Redis (e.g. after restart)
+        game = await self._game_store.load(game_id)
+        if game is not None:
+            self.games[game_id] = game
+        return game
+
+    async def get_game_info(self, game_id: str) -> Optional[dict]:
         """Get game information for API response.
 
         Only exposes the game state — player slot occupancy is deliberately
         hidden to prevent game-ID enumeration attacks (#18).
         """
-        game = self.get_game(game_id)
+        game = await self.get_game(game_id)
         if not game:
             return None
 
@@ -122,7 +128,7 @@ class GameService:
         Returns:
             player_id if successful, None otherwise
         """
-        game = self.get_game(game_id)
+        game = await self.get_game(game_id)
         if not game:
             return None
 
@@ -189,7 +195,7 @@ class GameService:
     
     async def handle_plane_placement(self, game_id: str, player_id: str, plane_data: dict):
         """Handle plane placement request"""
-        game = self.get_game(game_id)
+        game = await self.get_game(game_id)
         if not game:
             return
         
@@ -218,7 +224,7 @@ class GameService:
 
     async def handle_attack(self, game_id: str, player_id: str, x: int, y: int):
         """Handle attack request"""
-        game = self.get_game(game_id)
+        game = await self.get_game(game_id)
         if not game:
             return
         
@@ -286,7 +292,7 @@ class GameService:
         self.connection_manager.disconnect(game_id, player_id)
 
         # Clear the player slot so a reconnecting client can reclaim it
-        game = self.get_game(game_id)
+        game = await self.get_game(game_id)
         if game:
             game.players[player_id] = None
 

@@ -50,6 +50,13 @@ class MockWebSocket {
     this.onerror?.({});
   }
 
+  /** Simulate server accepting the connection (sends player_assigned message) */
+  simulateAuth(sessionToken?: string) {
+    const msg: any = { type: 'player_assigned', player_id: 'p1', game_state: 'waiting' };
+    if (sessionToken) msg.session_token = sessionToken;
+    this.simulateMessage(msg);
+  }
+
   simulateUnexpectedClose() {
     this.readyState = MockWebSocket.CLOSED;
     this.onclose?.({});
@@ -59,18 +66,34 @@ class MockWebSocket {
 // Apply mock globally
 const OriginalWebSocket = globalThis.WebSocket;
 
+// Mock localStorage (jsdom doesn't always provide a full implementation)
+const localStorageMock = (() => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: (key: string) => store[key] ?? null,
+    setItem: (key: string, value: string) => { store[key] = value; },
+    removeItem: (key: string) => { delete store[key]; },
+    clear: () => { store = {}; },
+    get length() { return Object.keys(store).length; },
+    key: (i: number) => Object.keys(store)[i] ?? null,
+  };
+})();
+Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, writable: true });
+
 beforeEach(() => {
   MockWebSocket.instances = [];
   (globalThis as any).WebSocket = MockWebSocket;
   vi.useFakeTimers();
   // Zero jitter by default so existing exact-timing tests pass
   vi.spyOn(Math, 'random').mockReturnValue(0);
+  localStorageMock.clear();
 });
 
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   (globalThis as any).WebSocket = OriginalWebSocket;
+  localStorageMock.clear();
 });
 
 // Helper to get the latest MockWebSocket instance
@@ -110,14 +133,17 @@ describe('useGameWebSocket', () => {
       expect(result.current.connectionStatus).toBe('connecting');
     });
 
-    it('should transition to "connected" on successful open', () => {
+    it('should stay "connecting" after open until server confirms via player_assigned', () => {
       const onMessage = vi.fn();
       const { result } = renderHook(() =>
         useGameWebSocket({ gameId: 'game-123', onMessage })
       );
 
       act(() => latestWS().simulateOpen());
+      // Still connecting — server hasn't confirmed auth yet
+      expect(result.current.connectionStatus).toBe('connecting');
 
+      act(() => latestWS().simulateAuth());
       expect(result.current.connectionStatus).toBe('connected');
     });
 
@@ -179,6 +205,86 @@ describe('useGameWebSocket', () => {
   });
 
   // ==========================================================================
+  // AUTH HANDSHAKE
+  // ==========================================================================
+
+  describe('Auth Handshake', () => {
+
+    it('should send auth message with null token on first connection', () => {
+      const onMessage = vi.fn();
+      renderHook(() => useGameWebSocket({ gameId: 'game-123', onMessage }));
+
+      act(() => latestWS().simulateOpen());
+
+      expect(latestWS().sentMessages).toHaveLength(1);
+      expect(JSON.parse(latestWS().sentMessages[0])).toEqual({
+        type: 'auth',
+        token: null,
+      });
+    });
+
+    it('should send stored session token on reconnection', () => {
+      const onMessage = vi.fn();
+      renderHook(() => useGameWebSocket({ gameId: 'game-123', onMessage }));
+
+      // First connection — receive a session token
+      act(() => latestWS().simulateOpen());
+      act(() => latestWS().simulateAuth('secret-token-123'));
+
+      // Disconnect and reconnect
+      act(() => latestWS().simulateUnexpectedClose());
+      act(() => vi.advanceTimersByTime(1000));
+      act(() => latestWS().simulateOpen());
+
+      expect(JSON.parse(latestWS().sentMessages[0])).toEqual({
+        type: 'auth',
+        token: 'secret-token-123',
+      });
+    });
+
+    it('should persist session token to localStorage', () => {
+      const onMessage = vi.fn();
+      renderHook(() => useGameWebSocket({ gameId: 'game-123', onMessage }));
+
+      act(() => latestWS().simulateOpen());
+      act(() => latestWS().simulateAuth('persisted-token'));
+
+      expect(localStorage.getItem('game_token_game-123')).toBe('persisted-token');
+    });
+
+    it('should restore session token from localStorage on mount (tab reopen)', () => {
+      // Simulate a previous session having stored a token
+      localStorage.setItem('game_token_game-123', 'saved-token');
+
+      const onMessage = vi.fn();
+      renderHook(() => useGameWebSocket({ gameId: 'game-123', onMessage }));
+
+      act(() => latestWS().simulateOpen());
+
+      // Should send the token from localStorage, not null
+      expect(JSON.parse(latestWS().sentMessages[0])).toEqual({
+        type: 'auth',
+        token: 'saved-token',
+      });
+    });
+
+    it('should not leak tokens between different game IDs', () => {
+      localStorage.setItem('game_token_game-AAA', 'token-aaa');
+
+      const onMessage = vi.fn();
+      renderHook(() => useGameWebSocket({ gameId: 'game-BBB', onMessage }));
+
+      act(() => latestWS().simulateOpen());
+
+      // Should NOT pick up game-AAA's token
+      expect(JSON.parse(latestWS().sentMessages[0])).toEqual({
+        type: 'auth',
+        token: null,
+      });
+    });
+  });
+
+  // ==========================================================================
   // MESSAGE HANDLING
   // ==========================================================================
 
@@ -231,8 +337,9 @@ describe('useGameWebSocket', () => {
 
       act(() => result.current.send({ type: 'attack', x: 3, y: 5 }));
 
-      expect(latestWS().sentMessages).toHaveLength(1);
-      expect(JSON.parse(latestWS().sentMessages[0])).toEqual({
+      // sentMessages[0] is the auth handshake, [1] is the user message
+      expect(latestWS().sentMessages).toHaveLength(2);
+      expect(JSON.parse(latestWS().sentMessages[1])).toEqual({
         type: 'attack', x: 3, y: 5,
       });
     });
@@ -261,7 +368,7 @@ describe('useGameWebSocket', () => {
         result.current.send({ type: 'place_plane', head_x: 5, head_y: 2, orientation: 'up' })
       );
 
-      expect(JSON.parse(latestWS().sentMessages[0])).toEqual({
+      expect(JSON.parse(latestWS().sentMessages[1])).toEqual({
         type: 'place_plane', head_x: 5, head_y: 2, orientation: 'up',
       });
     });
@@ -386,21 +493,25 @@ describe('useGameWebSocket', () => {
       expect(MockWebSocket.instances).toHaveLength(countBefore + 1); // capped at 30s
     });
 
-    it('should reset retry count on successful reconnection', () => {
+    it('should reset retry count on successful reconnection (player_assigned)', () => {
       const onMessage = vi.fn();
       renderHook(() =>
         useGameWebSocket({ gameId: 'game-123', onMessage })
       );
 
       act(() => latestWS().simulateOpen());
+      act(() => latestWS().simulateAuth());
 
       // First disconnect -> 1000ms backoff
       act(() => latestWS().simulateUnexpectedClose());
       act(() => vi.advanceTimersByTime(1000));
       expect(MockWebSocket.instances).toHaveLength(2);
 
-      // Successful reconnect resets counter
-      act(() => latestWS().simulateOpen());
+      // Successful reconnect (server confirms) resets counter
+      act(() => {
+        latestWS().simulateOpen();
+        latestWS().simulateAuth();
+      });
 
       // Next disconnect should use 1000ms again (not 2000ms)
       act(() => latestWS().simulateUnexpectedClose());
@@ -412,20 +523,24 @@ describe('useGameWebSocket', () => {
       expect(MockWebSocket.instances).toHaveLength(3); // back to 1s
     });
 
-    it('should restore "connected" status after successful reconnection', () => {
+    it('should restore "connected" status after successful reconnection (player_assigned)', () => {
       const onMessage = vi.fn();
       const { result } = renderHook(() =>
         useGameWebSocket({ gameId: 'game-123', onMessage })
       );
 
       act(() => latestWS().simulateOpen());
+      act(() => latestWS().simulateAuth());
       expect(result.current.connectionStatus).toBe('connected');
 
       act(() => latestWS().simulateUnexpectedClose());
       expect(result.current.connectionStatus).toBe('reconnecting');
 
       act(() => vi.advanceTimersByTime(1000));
-      act(() => latestWS().simulateOpen());
+      act(() => {
+        latestWS().simulateOpen();
+        latestWS().simulateAuth();
+      });
 
       expect(result.current.connectionStatus).toBe('connected');
     });
@@ -522,13 +637,14 @@ describe('useGameWebSocket', () => {
       expect(onClose).toHaveBeenCalled();
     });
 
-    it('should reset max retry counter on successful reconnection', () => {
+    it('should reset max retry counter on successful reconnection (player_assigned)', () => {
       const onMessage = vi.fn();
       const { result } = renderHook(() =>
         useGameWebSocket({ gameId: 'game-123', onMessage })
       );
 
       act(() => latestWS().simulateOpen());
+      act(() => latestWS().simulateAuth());
 
       // Use up 9 retries (one short of max)
       for (let i = 0; i < 9; i++) {
@@ -536,8 +652,11 @@ describe('useGameWebSocket', () => {
         act(() => vi.advanceTimersByTime(30000));
       }
 
-      // Successful reconnect resets counter
-      act(() => latestWS().simulateOpen());
+      // Successful reconnect (server confirms via player_assigned) resets counter
+      act(() => {
+        latestWS().simulateOpen();
+        latestWS().simulateAuth();
+      });
 
       // Should be able to retry 10 more times
       for (let i = 0; i < 10; i++) {
@@ -570,6 +689,124 @@ describe('useGameWebSocket', () => {
 
       act(() => vi.advanceTimersByTime(500));
       expect(MockWebSocket.instances).toHaveLength(2); // reconnects at 1500ms
+    });
+  });
+
+  // ==========================================================================
+  // AUTH REJECTION (regression tests for infinite retry loop bug)
+  // ==========================================================================
+
+  describe('Auth Rejection', () => {
+
+    it('should not reset retry counter when open fires without player_assigned', () => {
+      const onMessage = vi.fn();
+      const { result } = renderHook(() =>
+        useGameWebSocket({ gameId: 'game-123', onMessage })
+      );
+
+      // Open but no player_assigned — status should stay 'connecting'
+      act(() => latestWS().simulateOpen());
+      expect(result.current.connectionStatus).toBe('connecting');
+
+      // Server closes (auth rejection)
+      act(() => latestWS().simulateUnexpectedClose());
+      expect(result.current.connectionStatus).toBe('reconnecting');
+
+      // After backoff, reconnect opens — still no player_assigned
+      act(() => vi.advanceTimersByTime(1000));
+      act(() => latestWS().simulateOpen());
+
+      // Status should be 'reconnecting', NOT 'connected'
+      expect(result.current.connectionStatus).toBe('reconnecting');
+    });
+
+    it('should use increasing backoff when auth is rejected after each open', () => {
+      const onMessage = vi.fn();
+      renderHook(() =>
+        useGameWebSocket({ gameId: 'game-123', onMessage })
+      );
+
+      // First connection: open then server rejects auth
+      act(() => latestWS().simulateOpen());
+      act(() => latestWS().simulateUnexpectedClose());
+      expect(MockWebSocket.instances).toHaveLength(1);
+
+      // Retry 1: should wait 1000ms
+      act(() => vi.advanceTimersByTime(999));
+      expect(MockWebSocket.instances).toHaveLength(1);
+      act(() => vi.advanceTimersByTime(1));
+      expect(MockWebSocket.instances).toHaveLength(2);
+
+      // Open and rejected again (no player_assigned)
+      act(() => latestWS().simulateOpen());
+      act(() => latestWS().simulateUnexpectedClose());
+
+      // Retry 2: should wait 2000ms (counter was NOT reset by open)
+      act(() => vi.advanceTimersByTime(1999));
+      expect(MockWebSocket.instances).toHaveLength(2);
+      act(() => vi.advanceTimersByTime(1));
+      expect(MockWebSocket.instances).toHaveLength(3);
+
+      // Open and rejected again
+      act(() => latestWS().simulateOpen());
+      act(() => latestWS().simulateUnexpectedClose());
+
+      // Retry 3: should wait 4000ms
+      act(() => vi.advanceTimersByTime(3999));
+      expect(MockWebSocket.instances).toHaveLength(3);
+      act(() => vi.advanceTimersByTime(1));
+      expect(MockWebSocket.instances).toHaveLength(4);
+    });
+
+    it('should give up after max retries when auth is repeatedly rejected', () => {
+      const onMessage = vi.fn();
+      const onClose = vi.fn();
+      const { result } = renderHook(() =>
+        useGameWebSocket({ gameId: 'game-123', onMessage, onClose })
+      );
+
+      // Initial connection opens, auth sent, but server rejects (closes)
+      act(() => latestWS().simulateOpen());
+      act(() => latestWS().simulateUnexpectedClose());
+
+      // Each retry: open succeeds, auth rejected (no player_assigned), close fires
+      // Need 10 iterations: retryCount goes 0→1, 1→2, ..., 9→10; give up when 10 >= max
+      for (let i = 0; i < 10; i++) {
+        act(() => vi.advanceTimersByTime(30000));
+        act(() => latestWS().simulateOpen());
+        act(() => latestWS().simulateUnexpectedClose());
+      }
+
+      const countAfter = MockWebSocket.instances.length;
+
+      // Advance more — no new connections should appear
+      act(() => vi.advanceTimersByTime(60000));
+
+      expect(MockWebSocket.instances).toHaveLength(countAfter);
+      expect(result.current.connectionStatus).toBe('disconnected');
+      expect(onClose).toHaveBeenCalled();
+    });
+
+    it('should not enter infinite retry loop when server always rejects auth', () => {
+      const onMessage = vi.fn();
+      renderHook(() =>
+        useGameWebSocket({ gameId: 'game-123', onMessage })
+      );
+
+      // Simulate the exact bug scenario: open resets counter, close retries from 0
+      // With the fix, this should NOT create unlimited connections
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const ws = latestWS();
+        if (ws.readyState === MockWebSocket.CONNECTING) {
+          act(() => ws.simulateOpen());
+          // Server rejects auth — closes connection without player_assigned
+          act(() => ws.simulateUnexpectedClose());
+        }
+        act(() => vi.advanceTimersByTime(30000));
+      }
+
+      // Should have stopped well before 20 connections (max retries is 10)
+      expect(MockWebSocket.instances.length).toBeLessThanOrEqual(11); // 1 initial + 10 retries
     });
   });
 });

@@ -18,7 +18,7 @@ interface Plane {
   orientation: 'up' | 'down' | 'left' | 'right';
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 function App() {
   const [gameId, setGameId] = useState<string | null>(null);

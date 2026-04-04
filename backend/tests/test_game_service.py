@@ -49,10 +49,7 @@ class MockWebSocket:
 PLANE_1 = {"head_x": 2, "head_y": 0, "orientation": "up", "type": "place_plane"}
 PLANE_2 = {"head_x": 7, "head_y": 0, "orientation": "up", "type": "place_plane"}
 
-
-@pytest.fixture
-def service():
-    return GameService()
+# NOTE: the `service` fixture is provided by conftest.py (FakeRedis-backed)
 
 
 async def _connect_two(service: GameService, game_id: str):
@@ -73,7 +70,8 @@ async def _setup_playing(service: GameService):
         await service.handle_plane_placement(game_id, pid, PLANE_1)
         await service.handle_plane_placement(game_id, pid, PLANE_2)
 
-    assert service.get_game(game_id).state == "playing"
+    game = await service.get_game(game_id)
+    assert game.state == "playing"
     ws1.clear()
     ws2.clear()
     return game_id, ws1, ws2
@@ -93,16 +91,18 @@ class TestGameCreation:
     @pytest.mark.asyncio
     async def test_get_game(self, service):
         gid = await service.create_game()
-        assert service.get_game(gid) is not None
-        assert service.get_game(gid).id == gid
+        game = await service.get_game(gid)
+        assert game is not None
+        assert game.id == gid
 
-    def test_get_nonexistent(self, service):
-        assert service.get_game("nope") is None
+    @pytest.mark.asyncio
+    async def test_get_nonexistent(self, service):
+        assert await service.get_game("nope") is None
 
     @pytest.mark.asyncio
     async def test_game_info(self, service):
         gid = await service.create_game()
-        info = service.get_game_info(gid)
+        info = await service.get_game_info(gid)
         assert info["id"] == gid
         assert info["state"] == "waiting"
         # #18 — must not expose player slots or current_turn
@@ -123,7 +123,6 @@ class TestPlayerConnection:
         pid = await service.handle_player_connection(gid, ws)
 
         assert pid == "player1"
-        assert ws.accepted
         msg = ws.find("player_assigned")
         assert msg["player_id"] == "player1"
         assert msg["game_state"] == "waiting"
@@ -175,7 +174,7 @@ class TestSessionTokenAuth:
     async def test_reconnect_with_valid_token(self, service):
         """A disconnected player can reclaim their slot with the correct token."""
         gid, ws1, ws2 = await _setup_playing(service)
-        game = service.get_game(gid)
+        game = await service.get_game(gid)
         token2 = game.session_tokens["player2"]
 
         await service.handle_player_disconnection(gid, "player2")
@@ -220,7 +219,7 @@ class TestSessionTokenAuth:
         """Session token survives disconnect and can be reused."""
         gid = await service.create_game()
         ws1, ws2 = await _connect_two(service, gid)
-        game = service.get_game(gid)
+        game = await service.get_game(gid)
         token1 = game.session_tokens["player1"]
 
         await service.handle_player_disconnection(gid, "player1")
@@ -234,7 +233,7 @@ class TestSessionTokenAuth:
     async def test_each_player_gets_unique_token(self, service):
         gid = await service.create_game()
         await _connect_two(service, gid)
-        game = service.get_game(gid)
+        game = await service.get_game(gid)
         assert game.session_tokens["player1"] != game.session_tokens["player2"]
 
 
@@ -268,7 +267,7 @@ class TestPlacement:
     @pytest.mark.asyncio
     async def test_game_starts_when_both_ready(self, service):
         gid, ws1, ws2 = await _setup_playing(service)
-        game = service.get_game(gid)
+        game = await service.get_game(gid)
         assert game.state == "playing"
         assert game.current_turn == "player1"
 
@@ -312,7 +311,8 @@ class TestAttack:
     async def test_turn_switches(self, service):
         gid, _, _ = await _setup_playing(service)
         await service.handle_attack(gid, "player1", 5, 5)
-        assert service.get_game(gid).current_turn == "player2"
+        game = await service.get_game(gid)
+        assert game.current_turn == "player2"
 
     @pytest.mark.asyncio
     async def test_game_over(self, service):
@@ -327,7 +327,8 @@ class TestAttack:
 
         go = ws1.find("game_over")
         assert go is not None and go["winner"] == "player1"
-        assert service.get_game(gid).state == GameState.FINISHED
+        game = await service.get_game(gid)
+        assert game.state == GameState.FINISHED
 
 
 # ---------------------------------------------------------------------------
@@ -341,7 +342,8 @@ class TestDisconnect:
         gid = await service.create_game()
         ws1, _ = await _connect_two(service, gid)
         await service.handle_player_disconnection(gid, "player1")
-        assert service.get_game(gid).players["player1"] is None
+        game = await service.get_game(gid)
+        assert game.players["player1"] is None
 
     @pytest.mark.asyncio
     async def test_disconnect_notifies_opponent(self, service):
@@ -354,7 +356,7 @@ class TestDisconnect:
     @pytest.mark.asyncio
     async def test_reconnect_sends_game_resumed(self, service):
         gid, ws1, ws2 = await _setup_playing(service)
-        game = service.get_game(gid)
+        game = await service.get_game(gid)
         token2 = game.session_tokens["player2"]
 
         await service.handle_player_disconnection(gid, "player2")
@@ -376,7 +378,7 @@ class TestDisconnect:
     async def test_reconnect_does_not_reset_state(self, service):
         """Reconnecting player2 must not revert the game to PLACING."""
         gid, _, ws2 = await _setup_playing(service)
-        game = service.get_game(gid)
+        game = await service.get_game(gid)
         token2 = game.session_tokens["player2"]
 
         await service.handle_player_disconnection(gid, "player2")
@@ -390,7 +392,7 @@ class TestDisconnect:
     async def test_reconnect_preserves_board(self, service):
         """Board damage should survive a disconnect/reconnect cycle."""
         gid, ws1, ws2 = await _setup_playing(service)
-        game = service.get_game(gid)
+        game = await service.get_game(gid)
         token2 = game.session_tokens["player2"]
 
         # P1 hits P2's cockpit
@@ -468,7 +470,7 @@ class TestGameStateSerialization:
     async def test_game_info_state_is_string(self, service):
         """state in get_game_info must be a plain str, not an enum."""
         gid = await service.create_game()
-        info = service.get_game_info(gid)
+        info = await service.get_game_info(gid)
         assert info["state"] == "waiting"
         assert type(info["state"]) is str
 

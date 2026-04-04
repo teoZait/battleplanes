@@ -6,6 +6,7 @@ from application.schemas import (
     PlacePlaneMessage,
     AttackMessage,
     GetBoardsMessage,
+    AuthMessage,
     parse_client_message,
 )
 
@@ -104,6 +105,30 @@ class TestGetBoardsMessage:
     def test_valid_message(self):
         msg = GetBoardsMessage(type="get_boards")
         assert msg.type == "get_boards"
+
+
+class TestAuthMessage:
+    """Test auth handshake message validation."""
+
+    def test_valid_with_token(self):
+        msg = AuthMessage(type="auth", token="abc-123")
+        assert msg.token == "abc-123"
+
+    def test_valid_without_token(self):
+        msg = AuthMessage(type="auth", token=None)
+        assert msg.token is None
+
+    def test_valid_from_dict(self):
+        msg = AuthMessage.model_validate({"type": "auth", "token": None})
+        assert msg.token is None
+
+    def test_missing_token_defaults_to_none(self):
+        msg = AuthMessage.model_validate({"type": "auth"})
+        assert msg.token is None
+
+    def test_wrong_type_rejected(self):
+        with pytest.raises(Exception):
+            AuthMessage.model_validate({"type": "attack", "token": None})
 
 
 class TestParseClientMessage:
