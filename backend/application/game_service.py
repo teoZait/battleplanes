@@ -44,9 +44,13 @@ class GameService:
         self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
 
     async def shutdown(self) -> None:
-        """Cancel background tasks."""
+        """Cancel background tasks and wait for them to finish."""
         if self._cleanup_task:
             self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
 
     async def _periodic_cleanup(self) -> None:
         """Periodically evict stale games from memory and Redis."""

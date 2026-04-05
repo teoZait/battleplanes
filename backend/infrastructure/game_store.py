@@ -29,7 +29,10 @@ class GameStore:
 
     def __init__(self, redis_url: str):
         self._redis: aioredis.Redis = aioredis.from_url(
-            redis_url, decode_responses=True
+            redis_url,
+            decode_responses=True,
+            socket_connect_timeout=5,
+            socket_timeout=5,
         )
         logger.info("GameStore configured for Redis at %s", redis_url)
 

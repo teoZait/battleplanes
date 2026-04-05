@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: battleplanes-config
+  namespace: battleplanes
+data:
+  cors-allowed-origins: "https://YOUR_DOMAIN"

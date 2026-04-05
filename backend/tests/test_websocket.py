@@ -579,7 +579,7 @@ class TestWebSocketOriginValidation:
     def test_allowed_origin_connects(self, client):
         """A WebSocket from an allowed origin should connect normally."""
         game_id = _create_game(client)
-        with _ws_connect(client, game_id, headers={"Origin": "http://localhost:3000"}) as ws:
+        with _ws_connect(client, game_id, headers={"Origin": "http://localhost"}) as ws:
             msg = ws.receive_json()
             assert msg["type"] == "player_assigned"
 

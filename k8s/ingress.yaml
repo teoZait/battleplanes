@@ -1,0 +1,57 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: battleplanes-ingress
+  namespace: battleplanes
+  annotations:
+    # cert-manager will auto-provision a Let's Encrypt TLS certificate
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # WebSocket support — increase timeouts and allow upgrades
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
+    # Enable WebSocket upgrades
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - YOUR_DOMAIN
+    secretName: battleplanes-tls
+  rules:
+  - host: YOUR_DOMAIN
+    http:
+      paths:
+      # Backend API and WebSocket
+      - path: /game
+        pathType: Prefix
+        backend:
+          service:
+            name: backend
+            port:
+              number: 8000
+      - path: /ws
+        pathType: Prefix
+        backend:
+          service:
+            name: backend
+            port:
+              number: 8000
+      # Health check endpoint
+      - path: /
+        pathType: Exact
+        backend:
+          service:
+            name: backend
+            port:
+              number: 8000
+      # Frontend (catch-all — must be last)
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend
+            port:
+              number: 80

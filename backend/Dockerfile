@@ -2,9 +2,14 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# keep an eye on  this change
-COPY . /app/
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+# Run as non-root user
+RUN useradd -r -s /bin/false appuser
+USER appuser
 
 EXPOSE 8000
 

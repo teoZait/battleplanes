@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from application.game_service import GameService
 from application.schemas import parse_client_message, AuthMessage
 from infrastructure.game_store import GameStore
@@ -35,12 +36,15 @@ async def _cleanup_rate_limits():
     """Periodically remove stale entries from the rate limit store."""
     while True:
         await asyncio.sleep(300)
-        now = time.time()
-        window_start = now - RATE_LIMIT_WINDOW
-        stale = [ip for ip, ts in _rate_limit_store.items()
-                 if not any(t > window_start for t in ts)]
-        for ip in stale:
-            del _rate_limit_store[ip]
+        try:
+            now = time.time()
+            window_start = now - RATE_LIMIT_WINDOW
+            stale = [ip for ip, ts in _rate_limit_store.items()
+                     if not any(t > window_start for t in ts)]
+            for ip in stale:
+                del _rate_limit_store[ip]
+        except Exception:
+            logger.exception("Error during rate limit cleanup")
 
 
 @asynccontextmanager
@@ -49,18 +53,32 @@ async def lifespan(app: FastAPI):
     await game_service.initialize()
     rate_limit_task = asyncio.create_task(_cleanup_rate_limits())
     yield
-    # Shutdown: cancel background tasks
+    # Shutdown: cancel background tasks and wait for them to finish
     rate_limit_task.cancel()
+    try:
+        await rate_limit_task
+    except asyncio.CancelledError:
+        pass
     await game_service.shutdown()
 
 
 app = FastAPI(title="Warplanes API", lifespan=lifespan)
 
-# CORS middleware - restrict to configured origins
-allowed_origins = os.environ.get(
-    "CORS_ALLOWED_ORIGINS",
-    "http://localhost:3000,http://localhost:5173,http://localhost:80,http://localhost,https://localhost"
-).split(",")
+# CORS middleware - restrict to configured origins.
+# In production CORS_ALLOWED_ORIGINS must be set; localhost defaults are for
+# local development only and are intentionally narrow.
+_cors_env = os.environ.get("CORS_ALLOWED_ORIGINS", "").strip()
+if _cors_env:
+    allowed_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+else:
+    allowed_origins = [
+        "http://localhost",
+        "https://localhost",
+    ]
+    logger.warning(
+        "CORS_ALLOWED_ORIGINS not set — using localhost defaults. "
+        "Set this variable in production."
+    )
 
 logger.info("Allowed CORS origins: %s", allowed_origins)
 
@@ -203,7 +221,7 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
         auth_data = json.loads(raw_auth)
         auth_msg = AuthMessage.model_validate(auth_data)
         token = auth_msg.token
-    except (asyncio.TimeoutError, json.JSONDecodeError, Exception):
+    except (asyncio.TimeoutError, json.JSONDecodeError, ValidationError):
         await websocket.close(code=1008)
         return
 

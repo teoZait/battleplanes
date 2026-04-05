@@ -1,38 +1,59 @@
+# Backend — single replica because WebSocket connections hold in-memory game
+# state.  Multiple replicas would require a shared pub/sub layer (Redis
+# pub/sub or similar) to route messages to the correct pod.  For up to
+# 10,000 concurrent users (≈5,000 games) a single pod with generous
+# resources is sufficient — Python asyncio handles many thousands of
+# concurrent WebSocket connections on a single process.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: battleships-backend
+  name: backend
+  namespace: battleplanes
   labels:
-    app: battleships
+    app: battleplanes
     component: backend
 spec:
-  replicas: 2
+  replicas: 1
+  strategy:
+    type: Recreate   # avoid two pods splitting WebSocket connections
   selector:
     matchLabels:
-      app: battleships
+      app: battleplanes
       component: backend
   template:
     metadata:
       labels:
-        app: battleships
+        app: battleplanes
         component: backend
     spec:
       containers:
       - name: backend
-        image: battleships-backend:latest
-        imagePullPolicy: IfNotPresent
+        image: REGION-docker.pkg.dev/PROJECT_ID/battleplanes/backend:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 8000
         env:
         - name: PYTHONUNBUFFERED
           value: "1"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: battleplanes-secrets
+              key: redis-password
+        - name: REDIS_URL
+          value: "redis://:$(REDIS_PASSWORD)@redis:6379/0"
+        - name: CORS_ALLOWED_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: battleplanes-config
+              key: cors-allowed-origins
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "250m"
-          limits:
             memory: "512Mi"
             cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
         livenessProbe:
           httpGet:
             path: /
@@ -50,8 +71,9 @@ apiVersion: v1
 kind: Service
 metadata:
   name: backend
+  namespace: battleplanes
   labels:
-    app: battleships
+    app: battleplanes
     component: backend
 spec:
   type: ClusterIP
@@ -61,5 +83,5 @@ spec:
     protocol: TCP
     name: http
   selector:
-    app: battleships
+    app: battleplanes
     component: backend
