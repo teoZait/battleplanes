@@ -12,6 +12,7 @@ export type ServerMessage =
   | { type: 'game_over'; winner: string }
   | { type: 'game_resumed'; own_board: CellStatus[][]; opponent_board: CellStatus[][]; current_turn: string }
   | { type: 'player_disconnected' }
+  | { type: 'player_reconnected'; player_id: string }
   | { type: 'error'; message: string };
 
 export type ClientMessage =

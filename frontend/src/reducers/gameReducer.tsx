@@ -142,6 +142,12 @@ export function gameReducer(
         message: 'Opponent disconnected',
       };
 
+    case 'player_reconnected':
+      return {
+        ...state,
+        message: 'Opponent reconnected',
+      };
+
     case 'error':
       return {
         ...state,

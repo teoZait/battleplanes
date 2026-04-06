@@ -405,6 +405,53 @@ class TestDisconnect:
         resumed = ws2_new.find("game_resumed")
         assert resumed["own_board"][0][2] == "head_hit"
 
+    @pytest.mark.asyncio
+    async def test_reconnect_notifies_opponent_during_playing(self, service):
+        """When a player reconnects mid-game, their opponent should be notified."""
+        gid, ws1, ws2 = await _setup_playing(service)
+        game = await service.get_game(gid)
+        token2 = game.session_tokens["player2"]
+
+        await service.handle_player_disconnection(gid, "player2")
+        ws1.clear()
+
+        ws2_new = MockWebSocket()
+        await service.handle_player_connection(gid, ws2_new, token=token2)
+
+        reconnected = ws1.find("player_reconnected")
+        assert reconnected is not None
+        assert reconnected["player_id"] == "player2"
+
+    @pytest.mark.asyncio
+    async def test_reconnect_notifies_opponent_during_placing(self, service):
+        """When a player reconnects during placement, their opponent should be notified."""
+        gid = await service.create_game()
+        ws1, ws2 = await _connect_two(service, gid)
+        game = await service.get_game(gid)
+        token1 = game.session_tokens["player1"]
+
+        await service.handle_player_disconnection(gid, "player1")
+        ws2.clear()
+
+        ws1_new = MockWebSocket()
+        await service.handle_player_connection(gid, ws1_new, token=token1)
+
+        reconnected = ws2.find("player_reconnected")
+        assert reconnected is not None
+        assert reconnected["player_id"] == "player1"
+
+    @pytest.mark.asyncio
+    async def test_first_connection_does_not_send_reconnected(self, service):
+        """Initial connections (no token) must not trigger player_reconnected."""
+        gid = await service.create_game()
+        ws1 = MockWebSocket()
+        await service.handle_player_connection(gid, ws1)
+
+        ws2 = MockWebSocket()
+        await service.handle_player_connection(gid, ws2)
+
+        assert ws1.find("player_reconnected") is None
+
 
 # ---------------------------------------------------------------------------
 # Connection lock (#24)

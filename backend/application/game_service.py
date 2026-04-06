@@ -194,6 +194,14 @@ class GameService:
                     "message": "Both players connected. Place your planes! (2 planes each)"
                 })
 
+            # Notify opponent that this player has reconnected
+            if token:
+                opponent = "player2" if player_id == "player1" else "player1"
+                await self.connection_manager.send_to_player(game_id, opponent, {
+                    "type": "player_reconnected",
+                    "player_id": player_id,
+                })
+
             await self._persist(game_id)
             return player_id
     

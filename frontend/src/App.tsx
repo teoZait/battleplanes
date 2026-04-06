@@ -94,43 +94,92 @@ function App() {
 
   return (
     <div className="App">
-      <h1>✈️ Battleplanes ✈️</h1>
+      <h1>Battleplanes</h1>
 
       {!gameId && (
-        <div className="menu">
-          <button
-            onClick={createGame}
-            className="btn btn-primary"
-          >
-            Create New Game
-          </button>
+        <div className="landing">
+          <div className="hero">
+            <div className="hero-plane">
+              <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M32 4L28 20H12L8 28H26L22 52L28 48V60L32 56L36 60V48L42 52L38 28H56L52 20H36L32 4Z"
+                      fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                <circle cx="32" cy="14" r="2.5" fill="currentColor" opacity="0.8"/>
+              </svg>
+            </div>
+            <p className="hero-tagline">Outsmart. Outmaneuver. Dominate the skies.</p>
 
-          <div className="join-game">
-            <input
-              type="text"
-              placeholder="Enter Game ID"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  joinGame((e.target as HTMLInputElement).value);
-                }
-              }}
-            />
+            <div className="hero-actions">
+              <button onClick={createGame} className="btn btn-primary">
+                Create Game
+              </button>
 
-            <button
-              onClick={() => {
-                const input = document.querySelector(
-                  '.join-game input'
-                ) as HTMLInputElement;
+              <div className="divider-text"><span>or</span></div>
 
-                if (input?.value) {
-                  joinGame(input.value);
-                }
-              }}
-              className="btn btn-secondary"
-            >
-              Join Game
-            </button>
+              <div className="join-game">
+                <input
+                  type="text"
+                  placeholder="Enter Game ID"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      joinGame((e.target as HTMLInputElement).value);
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    const input = document.querySelector(
+                      '.join-game input'
+                    ) as HTMLInputElement;
+                    if (input?.value) {
+                      joinGame(input.value);
+                    }
+                  }}
+                  className="btn btn-secondary"
+                >
+                  Join
+                </button>
+              </div>
+            </div>
           </div>
+
+          <section className="how-to-play">
+            <h2>How to Play</h2>
+            <div className="steps">
+              <div className="step">
+                <div className="step-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2L8 10H2L6 14L4 22L12 17L20 22L18 14L22 10H16L12 2Z"/>
+                  </svg>
+                </div>
+                <h3>Deploy</h3>
+                <p>Place 2 planes on your 10x10 grid. Position them wisely — your opponent is doing the same.</p>
+              </div>
+              <div className="step">
+                <div className="step-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <circle cx="12" cy="12" r="6"/>
+                    <circle cx="12" cy="12" r="2"/>
+                    <line x1="12" y1="2" x2="12" y2="4"/>
+                    <line x1="12" y1="20" x2="12" y2="22"/>
+                    <line x1="2" y1="12" x2="4" y2="12"/>
+                    <line x1="20" y1="12" x2="22" y2="12"/>
+                  </svg>
+                </div>
+                <h3>Strike</h3>
+                <p>Take turns firing at coordinates on the enemy grid. Hits burn, misses splash.</p>
+              </div>
+              <div className="step">
+                <div className="step-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                  </svg>
+                </div>
+                <h3>Destroy</h3>
+                <p>Hit the cockpit to down a plane. Destroy both enemy planes to claim victory.</p>
+              </div>
+            </div>
+          </section>
         </div>
       )}
 
