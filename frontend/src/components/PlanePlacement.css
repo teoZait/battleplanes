@@ -1,0 +1,350 @@
+.plane-placement {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 20px;
+}
+
+.placement-info {
+  text-align: center;
+}
+
+.placement-info h2 {
+  margin-bottom: 10px;
+  color: #e0f0ff;
+  font-size: 2rem;
+  text-shadow: 0 0 15px rgba(0, 210, 255, 0.4);
+}
+
+.placement-info p {
+  font-size: 1.2rem;
+  margin: 10px 0;
+  color: #74d7ff;
+}
+
+.placement-info .instruction {
+  font-size: 0.9rem;
+  font-style: italic;
+  opacity: 0.8;
+  color: #4a6b8c;
+}
+
+.btn-rotate {
+  background: linear-gradient(135deg, #00d2ff 0%, #00a0d7 100%);
+  color: white;
+  margin-top: 10px;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: bold;
+  transition: all 0.3s ease;
+  box-shadow: 
+    0 4px 15px rgba(0, 210, 255, 0.3),
+    inset 0 0 10px rgba(255, 255, 255, 0.1);
+}
+
+.btn-rotate:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 
+    0 8px 25px rgba(0, 210, 255, 0.6),
+    inset 0 0 15px rgba(255, 255, 255, 0.15);
+}
+
+.placement-board {
+  display: inline-block;
+  border: 2px solid #00d2ff;
+  border-radius: 12px;
+  box-shadow: 
+    0 0 30px rgba(0, 210, 255, 0.3),
+    inset 0 0 20px rgba(0, 210, 255, 0.1);
+  background: linear-gradient(135deg, #0a192f 0%, #0d264d 100%);
+  padding: 8px;
+  position: relative;
+}
+
+.placement-board::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border-radius: 14px;
+  background: linear-gradient(45deg, transparent 30%, rgba(0, 210, 255, 0.3) 50%, transparent 70%);
+  z-index: -1;
+}
+
+.placement-board .cell {
+  cursor: pointer;
+}
+
+.placement-board .cell.hovered-valid {
+  background: rgba(0, 210, 255, 0.4) !important;
+  border-color: #74d7ff;
+  box-shadow: inset 0 0 15px rgba(0, 210, 255, 0.3);
+}
+
+.placement-board .cell.hovered-invalid {
+  background: rgba(255, 51, 102, 0.4) !important;
+  border-color: #ff3366;
+  box-shadow: inset 0 0 12px rgba(255, 51, 102, 0.3);
+}
+
+/* Shake animation on invalid placement attempt */
+.placement-board.shake {
+  animation: board-shake 0.5s ease-in-out;
+}
+
+@keyframes board-shake {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-6px); }
+  30% { transform: translateX(6px); }
+  45% { transform: translateX(-4px); }
+  60% { transform: translateX(4px); }
+  75% { transform: translateX(-2px); }
+  90% { transform: translateX(2px); }
+}
+
+/* Plane preview styles */
+.plane-preview {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  opacity: 0.7;
+}
+
+.plane-preview.valid .preview-body {
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.6) 0%, rgba(0, 160, 215, 0.6) 50%, rgba(0, 210, 255, 0.6) 100%);
+  border: 2px solid #74d7ff;
+  box-shadow: inset 0 0 10px rgba(0, 210, 255, 0.3);
+}
+
+.plane-preview.valid .preview-head .preview-body {
+  background: linear-gradient(135deg, rgba(255, 184, 77, 0.6) 0%, rgba(255, 152, 50, 0.6) 50%, rgba(255, 184, 77, 0.6) 100%);
+  border: 2px solid #ffb84d;
+}
+
+.plane-preview.invalid .preview-body {
+  background: linear-gradient(135deg, rgba(255, 51, 102, 0.4) 0%, rgba(255, 30, 70, 0.4) 50%, rgba(255, 51, 102, 0.4) 100%);
+  border: 2px solid #ff3366;
+}
+
+.plane-preview.invalid .preview-head .preview-body {
+  background: linear-gradient(135deg, rgba(255, 184, 77, 0.4) 0%, rgba(255, 152, 50, 0.4) 50%, rgba(255, 184, 77, 0.4) 100%);
+  border: 2px solid #ffb84d;
+}
+
+.preview-segment,
+.preview-head {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.preview-body {
+  width: 100%;
+  height: 100%;
+  border-radius: 3px;
+  position: relative;
+}
+
+.preview-cockpit {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.7) 25%, rgba(255, 220, 150, 0.4) 50%, transparent 70%);
+  box-shadow: 0 0 6px rgba(255, 220, 150, 0.5);
+  z-index: 10;
+  opacity: 0.8;
+}
+
+.plane-segment {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.plane-segment .plane-body {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #2e8b7a 0%, #1f7a6d 50%, #2e8b7a 100%);
+  border: 2px solid rgba(72, 219, 195, 0.8);
+  border-radius: 3px;
+  position: relative;
+  box-shadow: inset 0 0 8px rgba(72, 219, 195, 0.3);
+}
+
+.plane-segment.head .plane-body {
+  background: linear-gradient(135deg, #ffb84d 0%, #ff9827 50%, #ffb84d 100%);
+  border: 2px solid #ffb84d;
+  box-shadow: inset 0 0 8px rgba(255, 184, 77, 0.3);
+}
+
+.cockpit {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 25%, rgba(255, 220, 150, 0.6) 50%, transparent 70%);
+  box-shadow: 0 0 8px rgba(255, 220, 150, 0.8), 0 0 3px rgba(255, 255, 255, 0.6) inset;
+  z-index: 10;
+}
+
+.plane-list {
+  background: rgba(0, 30, 69, 0.5);
+  padding: 20px;
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  min-width: 250px;
+  border: 1px solid rgba(0, 210, 255, 0.2);
+}
+
+.plane-list h3 {
+  margin-bottom: 15px;
+  color: #74d7ff;
+  text-shadow: 0 0 8px rgba(116, 215, 255, 0.4);
+}
+
+.plane-list ul {
+  list-style: none;
+  text-align: left;
+}
+
+.plane-list li {
+  padding: 12px;
+  margin: 5px 0;
+  border-radius: 8px;
+  background: rgba(0, 210, 255, 0.1);
+  transition: all 0.3s ease;
+  color: #e0f0ff;
+}
+
+.plane-list li.current {
+  background: rgba(0, 210, 255, 0.3);
+  border: 2px solid #74d7ff;
+  font-weight: bold;
+  box-shadow: inset 0 0 10px rgba(0, 210, 255, 0.2);
+}
+
+.plane-list li.placed {
+  background: rgba(0, 210, 255, 0.2);
+  border: 2px solid #74d7ff;
+  color: #74d7ff;
+}
+
+.plane-info {
+  margin-top: 15px;
+  padding: 10px;
+  background: rgba(255, 184, 77, 0.15);
+  border-radius: 8px;
+  border-left: 3px solid #ffb84d;
+}
+
+.plane-info p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #e0f0ff;
+}
+
+.placement-actions {
+  display: flex;
+  gap: 15px;
+}
+
+@media (max-width: 768px) {
+  .placement-info h2 {
+    font-size: 1.5rem;
+  }
+
+  .placement-info p {
+    font-size: 1rem;
+  }
+
+  .plane-list {
+    min-width: 200px;
+  }
+
+  .cockpit {
+    font-size: 16px;
+  }
+
+  .btn-rotate {
+    padding: 14px 28px;
+    font-size: 1rem;
+  }
+
+  .placement-actions .btn {
+    padding: 14px 28px;
+    font-size: 1rem;
+  }
+}
+
+.placement-board .cell {
+  touch-action: manipulation;
+}
+
+/* Small phone screens */
+@media (max-width: 480px) {
+  .plane-placement {
+    padding: 10px;
+    gap: 15px;
+  }
+
+  .placement-info h2 {
+    font-size: 1.3rem;
+  }
+
+  .placement-info p {
+    font-size: 0.9rem;
+  }
+
+  .placement-board {
+    padding: 6px;
+  }
+
+  .placement-board .cell {
+    width: 28px;
+    height: 28px;
+  }
+
+  .cockpit {
+    width: 12px;
+    height: 12px;
+  }
+
+  .preview-cockpit {
+    width: 10px;
+    height: 10px;
+  }
+
+  .plane-list {
+    min-width: unset;
+    width: 100%;
+    padding: 15px;
+  }
+
+  .btn-rotate {
+    padding: 14px 24px;
+    width: 100%;
+  }
+
+  .placement-actions {
+    width: 100%;
+  }
+
+  .placement-actions .btn {
+    flex: 1;
+    padding: 14px 16px;
+  }
+}

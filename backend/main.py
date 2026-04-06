@@ -1,333 +1,311 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Dict, Optional, Tuple
-import uuid
+"""
+FastAPI Application - API Layer / Presentation Layer
+"""
+import asyncio
 import json
-from enum import Enum
+import logging
+import os
+import time
+from collections import defaultdict
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="Battleships API")
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import ValidationError
+from application.game_service import GameService
+from application.schemas import parse_client_message, AuthMessage
+from infrastructure.game_store import GameStore
 
-# CORS middleware
+logger = logging.getLogger(__name__)
+
+# Persistence — Redis is required; defaults to localhost for local dev.
+redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+game_store = GameStore(redis_url)
+
+# Application service (singleton)
+game_service = GameService(game_store=game_store)
+
+# Rate limiting
+RATE_LIMIT_WINDOW = 60  # seconds
+RATE_LIMIT_MAX_REQUESTS = 30  # per window
+_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+
+
+async def _cleanup_rate_limits():
+    """Periodically remove stale entries from the rate limit store."""
+    while True:
+        await asyncio.sleep(300)
+        try:
+            now = time.time()
+            window_start = now - RATE_LIMIT_WINDOW
+            stale = [ip for ip, ts in _rate_limit_store.items()
+                     if not any(t > window_start for t in ts)]
+            for ip in stale:
+                del _rate_limit_store[ip]
+        except Exception:
+            logger.exception("Error during rate limit cleanup")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: restore games from Redis and start background tasks
+    await game_service.initialize()
+    rate_limit_task = asyncio.create_task(_cleanup_rate_limits())
+    yield
+    # Shutdown: cancel background tasks and wait for them to finish
+    rate_limit_task.cancel()
+    try:
+        await rate_limit_task
+    except asyncio.CancelledError:
+        pass
+    await game_service.shutdown()
+
+
+app = FastAPI(title="Warplanes API", lifespan=lifespan)
+
+# CORS middleware - restrict to configured origins.
+# In production CORS_ALLOWED_ORIGINS must be set; localhost defaults are for
+# local development only and are intentionally narrow.
+_cors_env = os.environ.get("CORS_ALLOWED_ORIGINS", "").strip()
+if _cors_env:
+    allowed_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+else:
+    allowed_origins = [
+        "http://localhost",
+        "https://localhost",
+    ]
+    logger.warning(
+        "CORS_ALLOWED_ORIGINS not set — using localhost defaults. "
+        "Set this variable in production."
+    )
+
+logger.info("Allowed CORS origins: %s", allowed_origins)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type"],
 )
 
-class CellStatus(str, Enum):
-    EMPTY = "empty"
-    SHIP = "ship"
-    HIT = "hit"
-    MISS = "miss"
 
-class ShipType(str, Enum):
-    CARRIER = "carrier"
-    BATTLESHIP = "battleship"
-    CRUISER = "cruiser"
-    SUBMARINE = "submarine"
-    DESTROYER = "destroyer"
+# Starlette's CORSMiddleware rejects WebSocket upgrades with 403 if the
+# Origin doesn't match — before our endpoint even runs.  We handle
+# WebSocket origin validation ourselves in _check_ws_origin, so bypass
+# CORS for WebSocket scopes by stripping the Origin header before it
+# reaches CORSMiddleware.
+class _BypassCorsForWebSocket:
+    """ASGI middleware: removes Origin from WebSocket headers so
+    CORSMiddleware ignores them.  Stashes the original value in
+    scope["ws_origin"] so _check_ws_origin can still validate it."""
 
-class Ship(BaseModel):
-    type: ShipType
-    positions: List[Tuple[int, int]]
-    hits: List[bool]
+    def __init__(self, app):
+        self.app = app
 
-class GameState(str, Enum):
-    WAITING = "waiting"
-    PLACING = "placing"
-    PLAYING = "playing"
-    FINISHED = "finished"
-
-class Game:
-    def __init__(self, game_id: str):
-        self.id = game_id
-        self.players: Dict[str, Optional[WebSocket]] = {"player1": None, "player2": None}
-        self.boards: Dict[str, List[List[str]]] = {
-            "player1": [["empty" for _ in range(10)] for _ in range(10)],
-            "player2": [["empty" for _ in range(10)] for _ in range(10)]
-        }
-        self.ships: Dict[str, List[Dict]] = {"player1": [], "player2": []}
-        self.state = GameState.WAITING
-        self.current_turn = "player1"
-        self.ready: Dict[str, bool] = {"player1": False, "player2": False}
-
-    def add_player(self, player_id: str, websocket: WebSocket):
-        if self.players["player1"] is None:
-            self.players["player1"] = websocket
-            return "player1"
-        elif self.players["player2"] is None:
-            self.players["player2"] = websocket
-            self.state = GameState.PLACING
-            return "player2"
-        return None
-
-    def place_ship(self, player_id: str, ship_data: Dict):
-        ship_type = ship_data["type"]
-        positions = ship_data["positions"]
-        
-        # Validate positions
-        for pos in positions:
-            x, y = pos
-            if x < 0 or x >= 10 or y < 0 or y >= 10:
-                return False
-            if self.boards[player_id][y][x] != "empty":
-                return False
-        
-        # Place ship on board
-        for pos in positions:
-            x, y = pos
-            self.boards[player_id][y][x] = "ship"
-        
-        # Store ship
-        self.ships[player_id].append({
-            "type": ship_type,
-            "positions": positions,
-            "hits": [False] * len(positions)
-        })
-        
-        return True
-
-    def attack(self, attacker: str, x: int, y: int):
-        defender = "player2" if attacker == "player1" else "player1"
-        
-        if x < 0 or x >= 10 or y < 0 or y >= 10:
-            return None
-        
-        cell = self.boards[defender][y][x]
-        
-        if cell == "ship":
-            self.boards[defender][y][x] = "hit"
-            # Update ship hits
-            for ship in self.ships[defender]:
-                if [x, y] in ship["positions"]:
-                    idx = ship["positions"].index([x, y])
-                    ship["hits"][idx] = True
-                    break
-            return "hit"
-        elif cell == "empty":
-            self.boards[defender][y][x] = "miss"
-            return "miss"
-        else:
-            return "already_attacked"
-
-    def check_winner(self):
-        for player_id in ["player1", "player2"]:
-            all_sunk = True
-            for ship in self.ships[player_id]:
-                if not all(ship["hits"]):
-                    all_sunk = False
-                    break
-            if all_sunk and len(self.ships[player_id]) > 0:
-                return "player2" if player_id == "player1" else "player1"
-        return None
-
-    def get_masked_board(self, player_id: str):
-        """Return opponent's board with ships hidden"""
-        opponent = "player2" if player_id == "player1" else "player1"
-        masked = []
-        for row in self.boards[opponent]:
-            masked_row = []
-            for cell in row:
-                if cell == "ship":
-                    masked_row.append("empty")
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "websocket":
+            origin = None
+            cleaned = []
+            for k, v in scope["headers"]:
+                if k == b"origin":
+                    origin = v.decode("latin-1")
                 else:
-                    masked_row.append(cell)
-            masked.append(masked_row)
-        return masked
+                    cleaned.append((k, v))
+            scope = dict(scope, headers=cleaned, ws_origin=origin)
+        await self.app(scope, receive, send)
 
 
-# Store active games
-games: Dict[str, Game] = {}
+# Added after CORSMiddleware so it wraps the outermost layer and runs first.
+app.add_middleware(_BypassCorsForWebSocket)
 
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: Dict[str, Dict[str, WebSocket]] = {}
 
-    async def connect(self, game_id: str, player_id: str, websocket: WebSocket):
-        await websocket.accept()
-        if game_id not in self.active_connections:
-            self.active_connections[game_id] = {}
-        self.active_connections[game_id][player_id] = websocket
+def _get_client_ip(request: Request) -> str:
+    """Return the real client IP.
 
-    def disconnect(self, game_id: str, player_id: str):
-        if game_id in self.active_connections and player_id in self.active_connections[game_id]:
-            del self.active_connections[game_id][player_id]
+    Behind our nginx reverse-proxy the ``X-Forwarded-For`` header is set to
+    ``$remote_addr`` (overwritten, not appended) so it always contains exactly
+    the real client IP and cannot be spoofed by the end-user.  When the header
+    is absent (direct access, tests) we fall back to ``request.client.host``.
+    """
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
-    async def send_to_player(self, game_id: str, player_id: str, message: dict):
-        if game_id in self.active_connections and player_id in self.active_connections[game_id]:
-            await self.active_connections[game_id][player_id].send_json(message)
 
-    async def broadcast_to_game(self, game_id: str, message: dict):
-        if game_id in self.active_connections:
-            for websocket in self.active_connections[game_id].values():
-                await websocket.send_json(message)
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    if request.url.path == "/":  # skip health check
+        return await call_next(request)
 
-manager = ConnectionManager()
+    client_ip = _get_client_ip(request)
+    now = time.time()
+    window_start = now - RATE_LIMIT_WINDOW
+
+    # Clean old entries and add current request
+    timestamps = _rate_limit_store[client_ip]
+    _rate_limit_store[client_ip] = [t for t in timestamps if t > window_start]
+    _rate_limit_store[client_ip].append(now)
+
+    if len(_rate_limit_store[client_ip]) > RATE_LIMIT_MAX_REQUESTS:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Too many requests. Try again later."}
+        )
+
+    return await call_next(request)
+
 
 @app.get("/")
 async def root():
-    return {"message": "Battleships API"}
+    """Health check endpoint"""
+    return {"message": "Warplanes API"}
+
 
 @app.post("/game/create")
 async def create_game():
-    game_id = str(uuid.uuid4())
-    games[game_id] = Game(game_id)
+    """Create a new game"""
+    game_id = await game_service.create_game()
     return {"game_id": game_id}
+
 
 @app.get("/game/{game_id}")
 async def get_game(game_id: str):
-    if game_id not in games:
+    """Get game information"""
+    game_info = await game_service.get_game_info(game_id)
+    
+    if not game_info:
         raise HTTPException(status_code=404, detail="Game not found")
     
-    game = games[game_id]
-    return {
-        "id": game.id,
-        "state": game.state,
-        "current_turn": game.current_turn,
-        "players": {
-            "player1": game.players["player1"] is not None,
-            "player2": game.players["player2"] is not None
-        }
-    }
+    return game_info
+
+
+# WebSocket security limits
+_WS_MSG_PER_SECOND = 10
+_WS_MAX_MSG_SIZE = 1024  # bytes (valid game messages are < 200 bytes)
+
+
+def _check_ws_origin(websocket: WebSocket) -> bool:
+    """Validate the WebSocket Origin against allowed CORS origins.
+
+    The origin is stashed in scope["ws_origin"] by _BypassCorsForWebSocket
+    (stripped from headers so CORSMiddleware doesn't interfere).
+    """
+    origin = websocket.scope.get("ws_origin")
+    if origin is None:
+        return True  # non-browser clients (curl, game bots) don't send Origin
+    return origin in allowed_origins
+
 
 @app.websocket("/ws/{game_id}")
 async def websocket_endpoint(websocket: WebSocket, game_id: str):
-    if game_id not in games:
+    """WebSocket endpoint for real-time gameplay"""
+    # #17 — Reject cross-origin WebSocket connections
+    if not _check_ws_origin(websocket):
         await websocket.close(code=1008)
         return
-    
-    game = games[game_id]
-    player_id = game.add_player(str(uuid.uuid4()), websocket)
-    
+
+    # Verify game exists
+    if not await game_service.get_game(game_id):
+        await websocket.close(code=1008)
+        return
+
+    # Accept the connection, then wait for the client's auth message.
+    # The token travels inside the WebSocket frame, not in the URL,
+    # so it stays out of browser history, proxy logs, and Referer headers.
+    await websocket.accept()
+    try:
+        raw_auth = await asyncio.wait_for(websocket.receive_text(), timeout=5.0)
+        auth_data = json.loads(raw_auth)
+        auth_msg = AuthMessage.model_validate(auth_data)
+        token = auth_msg.token
+    except (asyncio.TimeoutError, json.JSONDecodeError, ValidationError):
+        await websocket.close(code=1008)
+        return
+
+    # Connect player (token verified inside game_service)
+    player_id = await game_service.handle_player_connection(
+        game_id, websocket, token=token
+    )
+
     if player_id is None:
         await websocket.close(code=1008)
         return
-    
-    await manager.connect(game_id, player_id, websocket)
-    
-    # Send player assignment
-    await manager.send_to_player(game_id, player_id, {
-        "type": "player_assigned",
-        "player_id": player_id,
-        "game_state": game.state
-    })
-    
-    # Notify both players if game is ready
-    if game.state == GameState.PLACING:
-        await manager.broadcast_to_game(game_id, {
-            "type": "game_ready",
-            "message": "Both players connected. Place your ships!"
-        })
-    
+
+    # #14 — Per-connection message rate tracking
+    msg_timestamps: list[float] = []
+
     try:
         while True:
-            data = await websocket.receive_json()
-            
-            if data["type"] == "place_ships":
-                ships = data["ships"]
-                success = True
-                for ship in ships:
-                    if not game.place_ship(player_id, ship):
-                        success = False
-                        break
-                
-                if success:
-                    game.ready[player_id] = True
-                    await manager.send_to_player(game_id, player_id, {
-                        "type": "ships_placed",
-                        "success": True
-                    })
-                    
-                    # Check if both players are ready
-                    if game.ready["player1"] and game.ready["player2"]:
-                        game.state = GameState.PLAYING
-                        await manager.broadcast_to_game(game_id, {
-                            "type": "game_started",
-                            "current_turn": game.current_turn
-                        })
-                else:
-                    await manager.send_to_player(game_id, player_id, {
-                        "type": "ships_placed",
-                        "success": False,
-                        "error": "Invalid ship placement"
-                    })
-            
-            elif data["type"] == "attack":
-                if game.state != GameState.PLAYING:
-                    continue
-                
-                if game.current_turn != player_id:
-                    await manager.send_to_player(game_id, player_id, {
-                        "type": "error",
-                        "message": "Not your turn"
-                    })
-                    continue
-                
-                x, y = data["x"], data["y"]
-                result = game.attack(player_id, x, y)
-                
-                if result is None or result == "already_attacked":
-                    await manager.send_to_player(game_id, player_id, {
-                        "type": "attack_result",
-                        "success": False,
-                        "message": "Invalid attack"
-                    })
-                    continue
-                
-                # Send attack result to both players
-                opponent = "player2" if player_id == "player1" else "player1"
-                
-                await manager.send_to_player(game_id, player_id, {
-                    "type": "attack_result",
-                    "success": True,
-                    "result": result,
-                    "x": x,
-                    "y": y,
-                    "is_attacker": True
+            # #15 — Message size limit: read raw text, check length, then parse
+            raw = await websocket.receive_text()
+
+            if len(raw) > _WS_MAX_MSG_SIZE:
+                await game_service.connection_manager.send_to_player(
+                    game_id, player_id,
+                    {"type": "error", "message": "Message too large"},
+                )
+                continue
+
+            # #14 — Per-connection rate limiting
+            now = time.time()
+            msg_timestamps = [t for t in msg_timestamps if t > now - 1.0]
+            if len(msg_timestamps) >= _WS_MSG_PER_SECOND:
+                await game_service.connection_manager.send_to_player(
+                    game_id, player_id,
+                    {"type": "error", "message": "Too many messages, slow down"},
+                )
+                continue
+            msg_timestamps.append(now)
+
+            # Parse JSON (replaces receive_json)
+            try:
+                data = json.loads(raw)
+            except (json.JSONDecodeError, ValueError):
+                await game_service.connection_manager.send_to_player(
+                    game_id, player_id,
+                    {"type": "error", "message": "Invalid JSON"},
+                )
+                continue
+
+            message = parse_client_message(data)
+
+            if message is None:
+                await game_service.connection_manager.send_to_player(game_id, player_id, {
+                    "type": "error",
+                    "message": "Invalid message format"
                 })
-                
-                await manager.send_to_player(game_id, opponent, {
-                    "type": "attack_result",
-                    "success": True,
-                    "result": result,
-                    "x": x,
-                    "y": y,
-                    "is_attacker": False
-                })
-                
-                # Check for winner
-                winner = game.check_winner()
-                if winner:
-                    game.state = GameState.FINISHED
-                    await manager.broadcast_to_game(game_id, {
-                        "type": "game_over",
-                        "winner": winner
+                continue
+
+            if message.type == "place_plane":
+                await game_service.handle_plane_placement(game_id, player_id, message.model_dump())
+
+            elif message.type == "attack":
+                await game_service.handle_attack(game_id, player_id, message.x, message.y)
+
+            elif message.type == "get_boards":
+                game = await game_service.get_game(game_id)
+                if game:
+                    await game_service.connection_manager.send_to_player(game_id, player_id, {
+                        "type": "boards_update",
+                        "own_board": game.boards[player_id],
+                        "opponent_board": game.get_masked_board(player_id)
                     })
-                else:
-                    # Switch turns
-                    game.current_turn = opponent
-                    await manager.broadcast_to_game(game_id, {
-                        "type": "turn_changed",
-                        "current_turn": game.current_turn
-                    })
-            
-            elif data["type"] == "get_boards":
-                await manager.send_to_player(game_id, player_id, {
-                    "type": "boards_update",
-                    "own_board": game.boards[player_id],
-                    "opponent_board": game.get_masked_board(player_id)
-                })
-    
+
     except WebSocketDisconnect:
-        manager.disconnect(game_id, player_id)
-        await manager.broadcast_to_game(game_id, {
-            "type": "player_disconnected",
-            "player_id": player_id
-        })
+        await game_service.handle_player_disconnection(game_id, player_id)
+    # #16 — Catch any other exception so disconnection cleanup always runs
+    except Exception:
+        logger.exception("WebSocket error for game=%s player=%s", game_id, player_id)
+        await game_service.handle_player_disconnection(game_id, player_id)
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            pass
+
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000, ws_ping_interval=30, ws_ping_timeout=10)

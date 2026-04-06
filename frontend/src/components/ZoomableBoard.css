@@ -1,0 +1,35 @@
+.zoomable-wrapper {
+  position: relative;
+  overflow: hidden;
+  display: inline-block;
+}
+
+.zoomable-content {
+  transform-origin: center center;
+  transition: transform 0.1s ease-out;
+}
+
+.zoomable-wrapper.zoomed .zoomable-content {
+  transition: none;
+}
+
+.zoom-reset-btn {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(0, 210, 255, 0.9);
+  color: #0a192f;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 20;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  touch-action: manipulation;
+}
+
+.zoom-reset-btn:active {
+  transform: scale(0.95);
+}
