@@ -94,7 +94,7 @@ function App() {
 
   return (
     <div className="App">
-      <h1>✈️ Warplanes ✈️</h1>
+      <h1>✈️ Battleplanes ✈️</h1>
 
       {!gameId && (
         <div className="menu">

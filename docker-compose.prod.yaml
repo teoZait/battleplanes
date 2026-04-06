@@ -1,0 +1,42 @@
+# Production override — use with:
+#   docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up -d
+#
+# Before first run, create .env with:
+#   REDIS_PASSWORD=<strong random password>
+#   DOMAIN=play.yourdomain.com
+#   CERT_EMAIL=you@yourdomain.com
+#   CORS_ALLOWED_ORIGINS=https://play.yourdomain.com
+#
+# Redis and backend ports from the base compose are still mapped but
+# blocked by the UFW firewall (only 80, 443, 22 are open).
+
+services:
+  backend:
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NGINX_CONF: nginx.prod.conf
+    volumes:
+      - certs:/etc/nginx/ssl:ro
+      - certbot-webroot:/var/www/certbot:ro
+
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - certs:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do sleep 12h & wait $${!}; certbot renew; done'"
+    restart: unless-stopped
+    networks:
+      - battleships-network
+
+volumes:
+  certs:
+  certbot-webroot:
