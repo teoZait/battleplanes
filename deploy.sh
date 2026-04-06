@@ -35,7 +35,21 @@ echo "==> Updated nginx.prod.conf with domain: ${DOMAIN}"
 echo "==> Building containers..."
 docker compose -f docker-compose.yaml -f docker-compose.prod.yaml build
 
-# ── 4. Bootstrap: start with self-signed cert first so nginx can serve ACME challenge ──
+# ── 4. Create temporary self-signed cert so nginx can start ──
+# The certs volume is empty on first run, but nginx.prod.conf expects
+# certs at /etc/nginx/ssl/live/DOMAIN/. We seed the volume with a
+# self-signed cert so nginx starts and can serve the ACME challenge.
+echo "==> Creating temporary self-signed certificate..."
+docker compose -f docker-compose.yaml -f docker-compose.prod.yaml run --rm --entrypoint="" \
+    certbot sh -c "
+        mkdir -p /etc/letsencrypt/live/${DOMAIN} &&
+        openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+            -keyout /etc/letsencrypt/live/${DOMAIN}/privkey.pem \
+            -out /etc/letsencrypt/live/${DOMAIN}/fullchain.pem \
+            -subj '/CN=${DOMAIN}'
+    "
+
+# ── 5. Start services with the temporary cert ──
 echo "==> Starting services (initial bootstrap)..."
 docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up -d
 
@@ -43,14 +57,14 @@ docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up -d
 echo "==> Waiting for nginx..."
 sleep 5
 
-# ── 5. Get the real certificate from Let's Encrypt ──
+# ── 6. Get the real certificate from Let's Encrypt ──
 echo "==> Requesting TLS certificate from Let's Encrypt..."
 docker compose -f docker-compose.yaml -f docker-compose.prod.yaml run --rm certbot \
     certonly --webroot -w /var/www/certbot \
     -d "${DOMAIN}" \
     --email "${EMAIL}" --agree-tos --no-eff-email
 
-# ── 6. Restart frontend to pick up the real cert ──
+# ── 7. Restart frontend to pick up the real cert ──
 echo "==> Restarting frontend with real TLS certificate..."
 docker compose -f docker-compose.yaml -f docker-compose.prod.yaml restart frontend
 
