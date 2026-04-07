@@ -180,6 +180,25 @@ h1::before {
   line-height: 1.55;
 }
 
+.landing-footer {
+  margin-top: 48px;
+  padding: 16px 0;
+}
+
+.landing-footer a {
+  color: #5d8faa;
+  transition: color 0.2s ease;
+}
+
+.landing-footer a:hover {
+  color: #00d2ff;
+}
+
+.landing-footer svg {
+  width: 24px;
+  height: 24px;
+}
+
 .btn {
   padding: 14px 35px;
   font-size: 16px;

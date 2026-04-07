@@ -214,8 +214,8 @@ battleplanes/
 │   ├── ingress.yaml
 │   ├── cert-issuer.yaml
 │   └── namespace.yaml
-├── docker-compose.yaml                # Local development
-└── docker-compose.prod.yaml           # Production compose
+├── docker compose.yaml                # Local development
+└── docker compose.prod.yaml           # Production compose
 ```
 
 ---
@@ -276,7 +276,7 @@ Connect to `ws://HOST/ws/{game_id}` (optionally with `?token=SESSION_TOKEN` for 
 ### Docker Compose (Production)
 
 ```bash
-REDIS_PASSWORD=your-secure-password docker compose -f docker-compose.prod.yaml up --build -d
+REDIS_PASSWORD=your-secure-password docker compose -f docker compose.prod.yaml up --build -d
 ```
 
 ### Kubernetes
@@ -297,4 +297,4 @@ kubectl apply -f k8s/ingress.yaml
 
 ## License
 
-This project is open source and available for educational purposes.
+This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.
