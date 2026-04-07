@@ -1,12 +1,12 @@
 services:
   redis:
     image: redis:7-alpine
-    container_name: battleships-redis
+    container_name: battleplanes-redis
     command: redis-server --requirepass ${REDIS_PASSWORD:-changeme}
     ports:
       - "6379:6379"
     networks:
-      - battleships-network
+      - battleplanes-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
@@ -18,7 +18,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: battleships-backend
+    container_name: battleplanes-backend
     ports:
       - "8000:8000"
     environment:
@@ -29,7 +29,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - battleships-network
+      - battleplanes-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
@@ -44,16 +44,16 @@ services:
       dockerfile: Dockerfile
       args:
         NGINX_CONF: nginx.dev.conf
-    container_name: battleships-frontend
+    container_name: battleplanes-frontend
     ports:
       - "80:80"
     depends_on:
       backend:
         condition: service_healthy
     networks:
-      - battleships-network
+      - battleplanes-network
     restart: unless-stopped
 
 networks:
-  battleships-network:
+  battleplanes-network:
     driver: bridge

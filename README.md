@@ -1,262 +1,300 @@
-# ✈️ Warplanes Game
+# Battleplanes
 
-A modern, real-time multiplayer Warplanes game with custom plane designs, built with FastAPI (Python) backend and React (TypeScript) frontend, containerized with Docker and orchestrated with Kubernetes.
+A real-time multiplayer strategy game where two players place planes on a grid and take turns trying to destroy each other's cockpits. Built with FastAPI, React, Redis, and WebSockets — fully containerized with Docker and deployable to Kubernetes.
 
-## 🎮 Features
-
-- **Real-time Multiplayer**: WebSocket-based communication for instant updates
-- **Custom Plane Designs**: Visually appealing plane representations with animations
-- **Unique Gameplay**: 
-  - Each player has 2 planes
-  - Planes have a distinctive cross-shaped pattern (10 cells each)
-  - Hit the cockpit (head) to destroy a plane
-  - Body hits don't destroy the plane
-  - Destroy both enemy planes to win
-- **Interactive Gameplay**: 
-  - Drag and rotate planes during setup phase (4 orientations)
-  - Click to attack opponent's airspace
-  - Visual feedback for hits, misses, and destroyed planes
-- **Responsive Design**: Works on desktop and mobile devices
-- **Production-Ready**: Containerized with Docker and deployable to Kubernetes
-
-## 🎯 Game Rules
-
-### Plane Structure
-Each plane consists of 10 cells in this pattern:
-```
-    [X] [X] [H] [X] [X]   <- Head (cockpit)
-    [B] [B] [B] [B] [B]   <- Body
-    [X] [X] [B] [X] [X]   <- Body
-    [X] [B] [B] [B] [X]   <- Body (tail)
-```
-
-- **H** = Head/Cockpit (the critical hit point)
-- **B** = Body (can be hit without destroying the plane)
-- **X** = Empty space
-
-### Winning Conditions
-- Each player places 2 planes
-- Planes can be rotated in 4 directions: UP, DOWN, LEFT, RIGHT
-- **Body hits** (🔥): Damage the plane but don't destroy it
-- **Cockpit hits** (💥): Destroy the plane immediately
-- **Objective**: Destroy both enemy planes to win
-
-## 🏗️ Architecture
-
-### Backend (FastAPI)
-- **Framework**: FastAPI with WebSocket support
-- **Language**: Python 3.11
-- **Features**:
-  - RESTful API for game creation
-  - WebSocket connections for real-time gameplay
-  - Game state management
-  - Plane placement validation (4 orientations)
-  - Attack logic with head/body hit detection
-  - Winner detection (both planes destroyed)
-
-### Frontend (React + TypeScript)
-- **Framework**: React 18 with TypeScript
-- **Build Tool**: Vite
-- **Features**:
-  - Interactive game boards with custom CSS
-  - Real-time updates via WebSocket
-  - Plane placement interface with 4-way rotation
-  - Visual feedback for game states
-  - Distinctive animations for head hits vs body hits
-  - Responsive design
-
-## 📁 Project Structure
-
-```
-warplanes-app/
-├── backend/
-│   ├── main.py              # FastAPI application
-│   ├── requirements.txt     # Python dependencies
-│   └── Dockerfile          # Backend container
-├── frontend/
-│   ├── src/
-│   │   ├── App.tsx         # Main application component
-│   │   ├── App.css         # Main styling
-│   │   ├── components/
-│   │   │   ├── GameBoard.tsx      # Game board display
-│   │   │   ├── GameBoard.css      # Custom plane designs
-│   │   │   ├── PlanePlacement.tsx  # Plane placement UI
-│   │   │   ├── PlanePlacement.css
-│   │   │   ├── GameInfo.tsx       # Game status display
-│   │   │   └── GameInfo.css
-│   │   ├── hooks/
-│   │   │   └── UseGameWebSocket.tsx
-│   │   ├── reducers/
-│   │   │   └── gameReducer.tsx
-│   │   ├── main.tsx        # Entry point
-│   │   └── index.css       # Global styles
-│   ├── package.json
-│   ├── Dockerfile          # Frontend container
-│   └── nginx.conf          # Nginx configuration
-├── k8s/
-│   ├── backend-deployment.yaml    # Backend K8s config
-│   └── frontend-deployment.yaml   # Frontend K8s config
-└── docker-compose.yaml     # Local development setup
-```
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Docker and Docker Compose
-- (Optional) Kubernetes cluster (minikube, kind, or cloud provider)
-- (Optional) kubectl CLI tool
-
-### Local Development with Docker Compose
-
-1. **Clone the repository** (or navigate to the project directory)
-
-2. **Build and run the containers**:
-   ```bash
-   docker-compose up --build
-   ```
-
-3. **Access the application**:
-   - Frontend: http://localhost
-   - Backend API: http://localhost:8000
-   - API Docs: http://localhost:8000/docs
-
-4. **Stop the application**:
-   ```bash
-   docker-compose down
-   ```
-
-## 🎲 How to Play
-
-1. **Create a Game**:
-   - Click "Create New Game" to start a new game
-   - Share the Game ID with your opponent
-
-2. **Join a Game**:
-   - Enter the Game ID provided by your opponent
-   - Click "Join Game"
-
-3. **Place Your Planes**:
-   - Click "Rotate" to change plane orientation (UP/RIGHT/DOWN/LEFT)
-   - Click on the board where you want the cockpit (head) to be
-   - Place 2 planes total
-   - Click "Confirm Placement" when done
-
-4. **Battle**:
-   - When it's your turn, click on your opponent's airspace to attack
-   - 🔥 Red with fire = Body hit (plane still active)
-   - 💥 Purple with explosion = Cockpit hit (plane destroyed!)
-   - 💧 Blue with water = Miss
-   - Destroy both enemy planes to win!
-
-## 🎨 Custom Plane Design
-
-Planes are rendered with attention to detail:
-
-- **Visual Design**: Metallic gradients with 3D depth
-- **Cockpit**: Orange/red gradient with ✈️ emoji marker
-- **Body**: Gray metallic gradient
-- **Animations**: 
-  - Smooth placement transitions
-  - Body hit: Fire explosion (🔥)
-  - Cockpit hit: Massive explosion (💥) with special animation
-  - Miss: Water splash (💧)
-- **Hover States**: Green for valid placement, red for invalid
-
-## 🔧 Configuration
-
-### Environment Variables
-
-#### Frontend (.env)
-```
-VITE_API_URL=http://localhost:8000
-```
-
-For production, update this to your backend service URL.
-
-## 🛠️ Development
-
-### Backend Development
-
-1. Create a virtual environment:
-   ```bash
-   cd backend
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. Run the development server:
-   ```bash
-   uvicorn main:app --reload
-   ```
-
-### Frontend Development
-
-1. Install dependencies:
-   ```bash
-   cd frontend
-   npm install
-   ```
-
-2. Run the development server:
-   ```bash
-   npm run dev
-   ```
-
-3. Build for production:
-   ```bash
-   npm run build
-   ```
-
-## 🧪 API Endpoints
-
-### REST API
-
-- `GET /` - Health check
-- `POST /game/create` - Create a new game
-- `GET /game/{game_id}` - Get game information
-
-### WebSocket
-
-- `WS /ws/{game_id}` - WebSocket connection for real-time gameplay
-
-#### WebSocket Message Types
-
-**Client → Server**:
-- `place_plane` - Place a plane on the board (head_x, head_y, orientation)
-- `attack` - Attack opponent's airspace (x, y)
-
-**Server → Client**:
-- `player_assigned` - Player ID assignment
-- `game_ready` - Both players connected
-- `plane_placed` - Plane placement confirmation
-- `game_started` - Game begins
-- `attack_result` - Attack outcome (hit/head_hit/miss)
-- `turn_changed` - Turn switch
-- `game_over` - Game finished
-- `player_disconnected` - Opponent left
-
-## 📝 Key Differences from Battleships
-
-1. **Only 2 units per player** instead of 5 ships
-2. **Unique plane shape** (cross pattern) instead of linear ships
-3. **Head targeting mechanic**: Only cockpit hits destroy planes
-4. **4-way rotation** with complex placement validation
-5. **Different win condition**: Destroy both planes (not all ships)
-
-## 📝 License
-
-This project is open source and available for educational purposes.
-
-## 🤝 Contributing
-
-Contributions are welcome! Feel free to submit issues and pull requests.
+> Think Battleship, but with planes. Hit the cockpit to destroy it. Body shots don't count.
 
 ---
 
-Built with ❤️ using FastAPI, React, Docker, and Kubernetes
+## Table of Contents
+
+- [Game Rules](#game-rules)
+- [Tech Stack](#tech-stack)
+- [Architecture](#architecture)
+- [Getting Started](#getting-started)
+- [Running Tests](#running-tests)
+- [Project Structure](#project-structure)
+- [API Reference](#api-reference)
+- [Configuration](#configuration)
+- [Deployment](#deployment)
+- [License](#license)
+
+---
+
+## Game Rules
+
+### The Plane
+
+Each plane is a 10-cell cross pattern with a **cockpit** (head) and **body**:
+
+```
+         .   .   H   .   .       H = Cockpit (destroy target)
+         B   B   B   B   B       B = Body (hit, but plane survives)
+         .   .   B   .   .       . = Empty
+         .   B   B   B   .
+```
+
+Planes can be rotated in 4 orientations: UP, RIGHT, DOWN, LEFT.
+
+### How to Win
+
+| Phase     | What happens                                                     |
+|-----------|------------------------------------------------------------------|
+| Setup     | Each player places **2 planes** on their 10x10 grid             |
+| Battle    | Players alternate turns, clicking cells on the opponent's board  |
+| Victory   | First player to destroy **both** enemy cockpits wins             |
+
+### Hit Types
+
+| Result       | Meaning                    | Visual     |
+|--------------|----------------------------|------------|
+| Miss         | No plane at that cell      | Water drop |
+| Body hit     | Hit the plane body         | Fire       |
+| Cockpit hit  | Plane destroyed instantly  | Explosion  |
+
+---
+
+## Tech Stack
+
+| Layer      | Technology                                              |
+|------------|---------------------------------------------------------|
+| Backend    | Python 3.11, FastAPI, Uvicorn, Pydantic                 |
+| Frontend   | React 18, TypeScript, Vite                              |
+| State      | Redis 7 (async, authenticated)                          |
+| Realtime   | WebSockets with session-token auth and reconnection     |
+| Infra      | Docker Compose (dev), Kubernetes + Nginx (prod)         |
+| Testing    | pytest + pytest-asyncio (backend), Vitest (frontend)    |
+
+---
+
+## Architecture
+
+```
+                       ┌────────────┐
+                       │   Nginx    │ :80 / :443
+                       │  (reverse  │  TLS termination
+                       │   proxy)   │  security headers
+                       └─────┬──────┘
+                             │
+              ┌──────────────┴──────────────┐
+              │                             │
+     HTTP / WS upgrade               Static assets
+              │                       (React SPA)
+              v
+      ┌───────────────┐
+      │   FastAPI      │ :8000
+      │   Backend      │  REST + WebSocket
+      │                │  rate limiting
+      │                │  session auth
+      └───────┬───────┘
+              │
+              v
+      ┌───────────────┐
+      │    Redis 7     │ :6379
+      │   (async)      │  game state
+      │                │  password auth
+      └───────────────┘
+```
+
+The backend follows **Clean Architecture** with three layers:
+
+- **Domain** — Game models, value objects, game logic (pure, no I/O)
+- **Application** — Game service, orchestration, lifecycle management
+- **Infrastructure** — Redis store, WebSocket connection manager
+
+### Security Highlights
+
+- Session-token authentication for WebSocket reconnection
+- Per-connection rate limiting (sliding window)
+- WebSocket message size limits
+- CORS with explicit origin allowlist
+- Security headers (HSTS, CSP, X-Frame-Options, X-Content-Type-Options)
+- Redis password authentication
+- WebSocket origin validation
+- Exponential backoff with jitter and max retry cap on the client
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) and Docker Compose
+
+### Run Locally
+
+```bash
+docker compose up --build
+```
+
+Then open [http://localhost](http://localhost) in your browser.
+
+| Service  | URL                           |
+|----------|-------------------------------|
+| Frontend | http://localhost               |
+| Backend  | http://localhost:8000          |
+| API Docs | http://localhost:8000/docs     |
+
+### Play
+
+1. Open the app and click **Create New Game**
+2. Copy the Game ID and share it with your opponent
+3. Both players place **2 planes** on the board (click to place, rotate to change orientation)
+4. Click **Confirm Placement** when ready
+5. Take turns attacking the opponent's grid
+6. Destroy both enemy cockpits to win
+
+---
+
+## Running Tests
+
+### Backend
+
+```bash
+docker compose run --rm backend python -m pytest tests/ -v
+```
+
+### Frontend
+
+```bash
+cd frontend
+docker run --rm -v "$(pwd)":/app -w /app node:18-alpine \
+  sh -c "npm install --silent 2>/dev/null && npx vitest run --reporter=verbose"
+```
+
+---
+
+## Project Structure
+
+```
+battleplanes/
+├── backend/
+│   ├── main.py                        # FastAPI app, routes, WS endpoint
+│   ├── domain/
+│   │   ├── models.py                  # Game aggregate root
+│   │   ├── game_logic.py              # Pure game rules
+│   │   └── value_objects.py           # Enums, board types
+│   ├── application/
+│   │   ├── game_service.py            # Orchestration, lifecycle
+│   │   └── schemas.py                 # Pydantic request/response models
+│   ├── infrastructure/
+│   │   ├── game_store.py              # Async Redis persistence
+│   │   └── connection_manager.py      # WebSocket connection tracking
+│   ├── tests/
+│   │   ├── conftest.py                # Test fixtures
+│   │   ├── test_api.py                # HTTP endpoint tests
+│   │   ├── test_websocket.py          # WS integration tests
+│   │   ├── test_game_service.py       # Service layer tests
+│   │   ├── test_game_store.py         # Redis store tests
+│   │   ├── test_domain.py             # Game logic tests
+│   │   └── ...
+│   ├── requirements.txt
+│   └── Dockerfile
+├── frontend/
+│   ├── src/
+│   │   ├── App.tsx                    # Main app component
+│   │   ├── components/
+│   │   │   ├── GameBoard.tsx          # Game board grid
+│   │   │   ├── PlanePlacement.tsx     # Plane setup UI
+│   │   │   ├── GameInfo.tsx           # Status display
+│   │   │   └── ZoomableBoard.tsx      # Pinch-to-zoom (mobile)
+│   │   ├── hooks/
+│   │   │   └── UseGameWebSocket.tsx   # WS hook with reconnection
+│   │   ├── reducers/
+│   │   │   └── gameReducer.tsx        # Game state reducer
+│   │   ├── helpers.ts                 # Plane rotation utilities
+│   │   └── tests/                     # Vitest test suites
+│   ├── nginx.conf                     # Nginx config (TLS, headers)
+│   ├── package.json
+│   └── Dockerfile                     # Multi-stage build
+├── k8s/                               # Kubernetes manifests
+│   ├── backend-deployment.yaml
+│   ├── frontend-deployment.yaml
+│   ├── redis.yaml
+│   ├── ingress.yaml
+│   ├── cert-issuer.yaml
+│   └── namespace.yaml
+├── docker-compose.yaml                # Local development
+└── docker-compose.prod.yaml           # Production compose
+```
+
+---
+
+## API Reference
+
+### REST Endpoints
+
+| Method | Path              | Description                 |
+|--------|-------------------|-----------------------------|
+| GET    | `/`               | Health check                |
+| POST   | `/game/create`    | Create a new game           |
+| GET    | `/game/{game_id}` | Get game info (id + state)  |
+
+### WebSocket
+
+Connect to `ws://HOST/ws/{game_id}` (optionally with `?token=SESSION_TOKEN` for reconnection).
+
+#### Client Messages
+
+```json
+{ "type": "place_plane", "head_x": 5, "head_y": 2, "orientation": "up" }
+{ "type": "attack", "x": 3, "y": 7 }
+```
+
+#### Server Messages
+
+| Type                  | Description                                           |
+|-----------------------|-------------------------------------------------------|
+| `player_assigned`     | Your player ID and session token                      |
+| `game_ready`          | Both players connected                                |
+| `plane_placed`        | Placement confirmation with count                     |
+| `game_started`        | Battle phase begins, includes who goes first          |
+| `attack_result`       | Hit/miss/head_hit result for both players             |
+| `turn_changed`        | Whose turn it is now                                  |
+| `game_over`           | Winner declared                                       |
+| `game_resumed`        | Full board state on reconnection                      |
+| `player_disconnected` | Opponent left                                         |
+| `error`               | Error message                                         |
+
+---
+
+## Configuration
+
+### Environment Variables
+
+| Variable               | Default                          | Description                           |
+|------------------------|----------------------------------|---------------------------------------|
+| `REDIS_URL`            | `redis://localhost:6379/0`       | Redis connection string               |
+| `REDIS_PASSWORD`       | `changeme`                       | Redis auth password                   |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost,https://localhost` | Comma-separated allowed origins    |
+| `VITE_API_URL`         | `http://localhost:8000`          | Backend URL (frontend build-time)     |
+
+---
+
+## Deployment
+
+### Docker Compose (Production)
+
+```bash
+REDIS_PASSWORD=your-secure-password docker compose -f docker-compose.prod.yaml up --build -d
+```
+
+### Kubernetes
+
+Apply the manifests in order:
+
+```bash
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/config.yaml
+kubectl apply -f k8s/redis.yaml
+kubectl apply -f k8s/backend-deployment.yaml
+kubectl apply -f k8s/frontend-deployment.yaml
+kubectl apply -f k8s/cert-issuer.yaml
+kubectl apply -f k8s/ingress.yaml
+```
+
+---
+
+## License
+
+This project is open source and available for educational purposes.
