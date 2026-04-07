@@ -3,6 +3,7 @@ Application Service - Game orchestration and use cases
 """
 from __future__ import annotations
 import asyncio
+import copy
 import logging
 import secrets
 import time
@@ -179,23 +180,41 @@ class GameService:
                 "session_token": game.session_tokens[player_id],
             })
 
-            # If game is already in progress, send board state so the client can resume
-            if game.state in (GameState.PLAYING, GameState.FINISHED):
+            # Send board state so the client can resume
+            # On reconnection: for PLACING, PLAYING, and FINISHED
+            # On first connection: only for PLAYING and FINISHED
+            send_resumed = (
+                game.state in (GameState.PLAYING, GameState.FINISHED)
+                or (token and game.state == GameState.PLACING)
+            )
+            if send_resumed:
+                opponent = "player2" if player_id == "player1" else "player1"
+                opponent_board = (
+                    game.boards[opponent]
+                    if game.state == GameState.FINISHED
+                    else game.get_masked_board(player_id)
+                )
                 await self.connection_manager.send_to_player(game_id, player_id, {
                     "type": "game_resumed",
                     "own_board": game.boards[player_id],
-                    "opponent_board": game.get_masked_board(player_id),
+                    "opponent_board": opponent_board,
                     "current_turn": game.current_turn,
+                    "game_state": game.state.value,
+                    "winner": game.check_winner(),
+                    "planes_placed": len(game.planes[player_id]),
                 })
+
             # Notify both players if game is ready for placement
-            elif game.state == GameState.PLACING:
+            if game.state == GameState.PLACING:
                 await self.connection_manager.broadcast_to_game(game_id, {
                     "type": "game_ready",
                     "message": "Both players connected. Place your planes! (2 planes each)"
                 })
 
-            # Notify opponent that this player has reconnected
-            if token:
+            # Notify opponent that this player has (re)connected.
+            # Sent on reconnection (token present) AND when a new player
+            # joins a continued game that's already in PLAYING/FINISHED.
+            if token or game.state in (GameState.PLAYING, GameState.FINISHED):
                 opponent = "player2" if player_id == "player1" else "player1"
                 await self.connection_manager.send_to_player(game_id, opponent, {
                     "type": "player_reconnected",
@@ -210,7 +229,15 @@ class GameService:
         game = await self.get_game(game_id)
         if not game:
             return
-        
+
+        opponent = "player2" if player_id == "player1" else "player1"
+        if game.players[opponent] is None:
+            await self.connection_manager.send_to_player(game_id, player_id, {
+                "type": "error",
+                "message": "Opponent is disconnected"
+            })
+            return
+
         success, message = game.place_plane(player_id, plane_data)
         
         await self.connection_manager.send_to_player(game_id, player_id, {
@@ -249,7 +276,15 @@ class GameService:
                 "message": "Not your turn"
             })
             return
-        
+
+        opponent = "player2" if player_id == "player1" else "player1"
+        if game.players[opponent] is None:
+            await self.connection_manager.send_to_player(game_id, player_id, {
+                "type": "error",
+                "message": "Opponent is disconnected"
+            })
+            return
+
         result = game.attack(player_id, x, y)
         
         if result is None or result == "already_attacked":
@@ -285,10 +320,13 @@ class GameService:
         winner = game.check_winner()
         if winner:
             game.finish_game()
-            await self.connection_manager.broadcast_to_game(game_id, {
-                "type": "game_over",
-                "winner": winner
-            })
+            for pid in ("player1", "player2"):
+                opponent = "player2" if pid == "player1" else "player1"
+                await self.connection_manager.send_to_player(game_id, pid, {
+                    "type": "game_over",
+                    "winner": winner,
+                    "opponent_board": game.boards[opponent],
+                })
         else:
             # Switch turns
             game.switch_turn()
@@ -299,8 +337,22 @@ class GameService:
 
         await self._persist(game_id)
 
-    async def handle_player_disconnection(self, game_id: str, player_id: str):
-        """Handle player disconnection"""
+    async def handle_player_disconnection(self, game_id: str, player_id: str, websocket=None):
+        """Handle player disconnection.
+
+        ``websocket`` is the specific socket that disconnected.  If a newer
+        connection has already replaced it (race between slow disconnect and
+        fast reconnect), we skip cleanup so the new connection isn't cleared.
+        """
+        # Guard against stale disconnect clearing a newer connection
+        if websocket is not None:
+            current_ws = self.connection_manager.active_connections.get(
+                game_id, {}
+            ).get(player_id)
+            if current_ws is not None and current_ws is not websocket:
+                # A new connection already took over — nothing to clean up
+                return
+
         self.connection_manager.disconnect(game_id, player_id)
 
         # Clear the player slot so a reconnecting client can reclaim it
@@ -314,3 +366,54 @@ class GameService:
         })
 
         await self._persist(game_id)
+
+    async def continue_game(self, game_id: str, session_token: str) -> Optional[dict]:
+        """Create a new game that continues from the state of an existing one.
+
+        The requesting player is identified by their session token and is
+        pre-assigned to the same slot in the new game.  The opponent slot
+        is left open so anyone with the new game ID can claim it.
+        """
+        game = await self.get_game(game_id)
+        if not game or game.state == GameState.WAITING:
+            return None
+
+        # Identify the requesting player
+        requesting_player = None
+        for pid in ("player1", "player2"):
+            stored = game.session_tokens.get(pid)
+            if stored and secrets.compare_digest(stored, session_token):
+                requesting_player = pid
+                break
+        if not requesting_player:
+            return None
+
+        opponent = "player2" if requesting_player == "player1" else "player1"
+
+        # Clone game state into a new game
+        new_game = Game(str(uuid.uuid4()))
+        new_game.boards = copy.deepcopy(game.boards)
+        new_game.planes = copy.deepcopy(game.planes)
+        new_game.current_turn = game.current_turn
+        new_game.state = game.state
+        new_game.ready = copy.copy(game.ready)
+
+        # During PLACING the new opponent hasn't placed planes yet — clear
+        # their board/planes/ready so they start placement fresh.
+        if game.state == GameState.PLACING:
+            new_game.boards[opponent] = [["empty"] * 10 for _ in range(10)]
+            new_game.planes[opponent] = []
+            new_game.ready[opponent] = False
+
+        # Pre-assign a token only for the requesting player's slot
+        new_token = secrets.token_urlsafe(32)
+        new_game.session_tokens[requesting_player] = new_token
+
+        self.games[new_game.id] = new_game
+        await self._persist(new_game.id)
+
+        return {
+            "game_id": new_game.id,
+            "session_token": new_token,
+            "player_id": requesting_player,
+        }
