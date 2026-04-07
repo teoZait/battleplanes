@@ -181,11 +181,19 @@ class GameService:
 
             # If game is already in progress, send board state so the client can resume
             if game.state in (GameState.PLAYING, GameState.FINISHED):
+                opponent = "player2" if player_id == "player1" else "player1"
+                opponent_board = (
+                    game.boards[opponent]
+                    if game.state == GameState.FINISHED
+                    else game.get_masked_board(player_id)
+                )
                 await self.connection_manager.send_to_player(game_id, player_id, {
                     "type": "game_resumed",
                     "own_board": game.boards[player_id],
-                    "opponent_board": game.get_masked_board(player_id),
+                    "opponent_board": opponent_board,
                     "current_turn": game.current_turn,
+                    "game_state": game.state.value,
+                    "winner": game.check_winner(),
                 })
             # Notify both players if game is ready for placement
             elif game.state == GameState.PLACING:
@@ -285,10 +293,13 @@ class GameService:
         winner = game.check_winner()
         if winner:
             game.finish_game()
-            await self.connection_manager.broadcast_to_game(game_id, {
-                "type": "game_over",
-                "winner": winner
-            })
+            for pid in ("player1", "player2"):
+                opponent = "player2" if pid == "player1" else "player1"
+                await self.connection_manager.send_to_player(game_id, pid, {
+                    "type": "game_over",
+                    "winner": winner,
+                    "opponent_board": game.boards[opponent],
+                })
         else:
             # Switch turns
             game.switch_turn()

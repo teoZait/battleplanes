@@ -3,14 +3,14 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 export type CellStatus = 'empty' | 'plane' | 'head' | 'hit' | 'miss' | 'head_hit';
 
 export type ServerMessage =
-  | { type: 'player_assigned'; player_id: string; game_state: 'waiting' | 'placing' | 'playing'; session_token?: string }
+  | { type: 'player_assigned'; player_id: string; game_state: 'waiting' | 'placing' | 'playing' | 'finished'; session_token?: string }
   | { type: 'game_ready'; message: string }
   | { type: 'plane_placed'; success: boolean; message: string; planes_count: number }
   | { type: 'game_started'; current_turn: string }
   | { type: 'attack_result'; x: number; y: number; result: string; is_attacker: boolean }
   | { type: 'turn_changed'; current_turn: string }
-  | { type: 'game_over'; winner: string }
-  | { type: 'game_resumed'; own_board: CellStatus[][]; opponent_board: CellStatus[][]; current_turn: string }
+  | { type: 'game_over'; winner: string; opponent_board: CellStatus[][] }
+  | { type: 'game_resumed'; own_board: CellStatus[][]; opponent_board: CellStatus[][]; current_turn: string; game_state?: string; winner?: string | null }
   | { type: 'player_disconnected' }
   | { type: 'player_reconnected'; player_id: string }
   | { type: 'error'; message: string };

@@ -224,6 +224,7 @@ function App() {
                     }
                     isOwnBoard={false}
                     isMyTurn={state.gameState === 'playing' ? state.playerId === state.currentTurn : undefined}
+                    gameFinished={state.gameState === 'finished'}
                   />
                 </ZoomableBoard>
               </div>

@@ -6,14 +6,16 @@ interface GameBoardProps {
   onCellClick: (x: number, y: number) => void;
   isOwnBoard: boolean;
   isMyTurn?: boolean;
+  gameFinished?: boolean;
 }
 
 const columnLabels = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
 const rowLabels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 
-const GameBoard = ({ board, onCellClick, isOwnBoard, isMyTurn }: GameBoardProps) => {
+const GameBoard = ({ board, onCellClick, isOwnBoard, isMyTurn, gameFinished }: GameBoardProps) => {
   const isActive = !isOwnBoard && isMyTurn;
   const isDimmed = !isOwnBoard && isMyTurn === false;
+  const showPlanes = isOwnBoard || gameFinished;
 
   return (
     <div className={`game-board ${!isOwnBoard ? 'enemy' : ''} ${isActive ? 'active-turn' : ''} ${isDimmed ? 'dimmed' : ''}`}>
@@ -40,12 +42,12 @@ const GameBoard = ({ board, onCellClick, isOwnBoard, isMyTurn }: GameBoardProps)
               className={`cell ${cell} ${!isOwnBoard ? 'clickable enemy' : ''} ${isDimmed ? 'disabled' : ''}`}
               onClick={() => onCellClick(x, y)}
             >
-              {(cell === 'plane' as CellStatus) && isOwnBoard && (
+              {(cell === 'plane' as CellStatus) && showPlanes && (
                 <div className="plane-segment">
                   <div className="plane-body"></div>
                 </div>
               )}
-              {(cell === 'head' as CellStatus) && isOwnBoard && (
+              {(cell === 'head' as CellStatus) && showPlanes && (
                 <div className="plane-segment head">
                   <div className="plane-body"></div>
                   <div className="cockpit"></div>
@@ -53,7 +55,7 @@ const GameBoard = ({ board, onCellClick, isOwnBoard, isMyTurn }: GameBoardProps)
               )}
               {(cell === 'hit' as CellStatus) && (
                 <>
-                  {isOwnBoard && (
+                  {showPlanes && (
                     <div className="plane-segment">
                       <div className="plane-body"></div>
                     </div>
@@ -66,7 +68,7 @@ const GameBoard = ({ board, onCellClick, isOwnBoard, isMyTurn }: GameBoardProps)
               )}
               {(cell === 'head_hit' as CellStatus) && (
                 <>
-                  {isOwnBoard && (
+                  {showPlanes && (
                     <div className="plane-segment head">
                       <div className="plane-body"></div>
                     </div>

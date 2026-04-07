@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from application.game_service import GameService
 from application.schemas import parse_client_message, AuthMessage
+from domain.models import GameState
 from infrastructure.game_store import GameStore
 
 logger = logging.getLogger(__name__)
@@ -288,10 +289,16 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
             elif message.type == "get_boards":
                 game = await game_service.get_game(game_id)
                 if game:
+                    opponent = "player2" if player_id == "player1" else "player1"
+                    opponent_board = (
+                        game.boards[opponent]
+                        if game.state == GameState.FINISHED
+                        else game.get_masked_board(player_id)
+                    )
                     await game_service.connection_manager.send_to_player(game_id, player_id, {
                         "type": "boards_update",
                         "own_board": game.boards[player_id],
-                        "opponent_board": game.get_masked_board(player_id)
+                        "opponent_board": opponent_board
                     })
 
     except WebSocketDisconnect:

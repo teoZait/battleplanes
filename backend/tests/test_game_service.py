@@ -330,6 +330,56 @@ class TestAttack:
         game = await service.get_game(gid)
         assert game.state == GameState.FINISHED
 
+    @pytest.mark.asyncio
+    async def test_game_over_includes_opponent_board(self, service):
+        """game_over message must include the opponent's full (unmasked) board."""
+        gid, ws1, ws2 = await _setup_playing(service)
+
+        await service.handle_attack(gid, "player1", 2, 0)  # head_hit
+        ws1.clear(); ws2.clear()
+        await service.handle_attack(gid, "player2", 5, 5)  # miss
+        ws1.clear(); ws2.clear()
+        await service.handle_attack(gid, "player1", 7, 0)  # head_hit → game over
+
+        # Winner (P1) receives loser's board
+        go1 = ws1.find("game_over")
+        assert go1 is not None
+        assert "opponent_board" in go1
+        board1 = go1["opponent_board"]
+        assert len(board1) == 10 and len(board1[0]) == 10
+        # Board must contain plane cells (unmasked)
+        flat1 = [cell for row in board1 for cell in row]
+        assert "plane" in flat1 or "head" in flat1 or "head_hit" in flat1
+
+        # Loser (P2) receives winner's board
+        go2 = ws2.find("game_over")
+        assert go2 is not None
+        assert "opponent_board" in go2
+        board2 = go2["opponent_board"]
+        flat2 = [cell for row in board2 for cell in row]
+        assert "plane" in flat2 or "head" in flat2
+
+    @pytest.mark.asyncio
+    async def test_game_over_boards_are_unmasked(self, service):
+        """Verify specific plane positions are visible in the revealed board."""
+        gid, ws1, ws2 = await _setup_playing(service)
+
+        # P1 destroys P2's two cockpits
+        await service.handle_attack(gid, "player1", 2, 0)  # head_hit on PLANE_1
+        ws1.clear(); ws2.clear()
+        await service.handle_attack(gid, "player2", 5, 5)  # miss
+        ws1.clear(); ws2.clear()
+        await service.handle_attack(gid, "player1", 7, 0)  # head_hit on PLANE_2 → game over
+
+        go1 = ws1.find("game_over")
+        board = go1["opponent_board"]
+        # PLANE_1 head at (2,0) was hit → head_hit; PLANE_2 head at (7,0) was hit → head_hit
+        assert board[0][2] == "head_hit"
+        assert board[0][7] == "head_hit"
+        # Body cells of the planes should still be "plane" (not masked to "empty")
+        # PLANE_1 wing cells at row 1 (y=1): x=0,1,2,3,4
+        assert board[1][0] == "plane"
+
 
 # ---------------------------------------------------------------------------
 # Disconnect & reconnect
@@ -451,6 +501,51 @@ class TestDisconnect:
         await service.handle_player_connection(gid, ws2)
 
         assert ws1.find("player_reconnected") is None
+
+    @pytest.mark.asyncio
+    async def test_reconnect_to_finished_game_reveals_opponent_board(self, service):
+        """Reconnecting to a finished game must show unmasked opponent board."""
+        gid, ws1, ws2 = await _setup_playing(service)
+
+        # Play to completion
+        await service.handle_attack(gid, "player1", 2, 0)  # head_hit
+        await service.handle_attack(gid, "player2", 5, 5)  # miss
+        await service.handle_attack(gid, "player1", 7, 0)  # head_hit → game over
+
+        game = await service.get_game(gid)
+        token1 = game.session_tokens["player1"]
+
+        await service.handle_player_disconnection(gid, "player1")
+
+        ws1_new = MockWebSocket()
+        await service.handle_player_connection(gid, ws1_new, token=token1)
+
+        resumed = ws1_new.find("game_resumed")
+        assert resumed is not None
+        assert resumed["game_state"] == "finished"
+        assert resumed["winner"] == "player1"
+        # Opponent board must be unmasked — should contain plane cells
+        flat = [cell for row in resumed["opponent_board"] for cell in row]
+        assert "plane" in flat or "head" in flat or "head_hit" in flat
+
+    @pytest.mark.asyncio
+    async def test_reconnect_to_playing_game_still_masks_board(self, service):
+        """Reconnecting to an in-progress game must NOT reveal opponent planes."""
+        gid, ws1, ws2 = await _setup_playing(service)
+        game = await service.get_game(gid)
+        token2 = game.session_tokens["player2"]
+
+        await service.handle_player_disconnection(gid, "player2")
+
+        ws2_new = MockWebSocket()
+        await service.handle_player_connection(gid, ws2_new, token=token2)
+
+        resumed = ws2_new.find("game_resumed")
+        assert resumed is not None
+        # Opponent board must be masked — no "plane" or "head" cells visible
+        flat = [cell for row in resumed["opponent_board"] for cell in row]
+        assert "plane" not in flat
+        assert "head" not in flat
 
 
 # ---------------------------------------------------------------------------

@@ -204,3 +204,70 @@ describe('GameBoard - Cell Rendering', () => {
     expect(board!.className).not.toContain('enemy');
   });
 });
+
+describe('GameBoard - End of Game Reveal', () => {
+
+  it('should show plane segments on enemy board when gameFinished is true', () => {
+    const board = createBoard();
+    board[1][2] = 'plane';
+
+    const { container } = render(
+      <GameBoard board={board} onCellClick={vi.fn()} isOwnBoard={false} gameFinished={true} />
+    );
+
+    const planeSegments = container.querySelectorAll('.plane-segment:not(.head)');
+    expect(planeSegments.length).toBeGreaterThan(0);
+  });
+
+  it('should show cockpit on enemy board when gameFinished is true', () => {
+    const board = createBoard();
+    board[1][2] = 'head';
+
+    const { container } = render(
+      <GameBoard board={board} onCellClick={vi.fn()} isOwnBoard={false} gameFinished={true} />
+    );
+
+    const cockpits = container.querySelectorAll('.cockpit');
+    expect(cockpits).toHaveLength(1);
+  });
+
+  it('should NOT show plane segments on enemy board during gameplay', () => {
+    const board = createBoard();
+    board[1][2] = 'plane';
+
+    const { container } = render(
+      <GameBoard board={board} onCellClick={vi.fn()} isOwnBoard={false} />
+    );
+
+    const planeSegments = container.querySelectorAll('.plane-segment');
+    expect(planeSegments).toHaveLength(0);
+  });
+
+  it('should show plane segment under hit marker on enemy board when gameFinished', () => {
+    const board = createBoard();
+    board[1][2] = 'hit';
+
+    const { container } = render(
+      <GameBoard board={board} onCellClick={vi.fn()} isOwnBoard={false} gameFinished={true} />
+    );
+
+    const dataRows = container.querySelectorAll('.board-row:not(.label-row)');
+    const cell = dataRows[1].querySelectorAll('.cell')[2];
+    expect(cell.querySelector('.plane-segment')).not.toBeNull();
+    expect(cell.querySelector('.hit-marker')).not.toBeNull();
+  });
+
+  it('should show plane segment under head_hit on enemy board when gameFinished', () => {
+    const board = createBoard();
+    board[1][2] = 'head_hit';
+
+    const { container } = render(
+      <GameBoard board={board} onCellClick={vi.fn()} isOwnBoard={false} gameFinished={true} />
+    );
+
+    const dataRows = container.querySelectorAll('.board-row:not(.label-row)');
+    const cell = dataRows[1].querySelectorAll('.cell')[2];
+    expect(cell.querySelector('.plane-segment.head')).not.toBeNull();
+    expect(cell.querySelector('.hit-marker')).not.toBeNull();
+  });
+});

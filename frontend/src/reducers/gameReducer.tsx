@@ -123,16 +123,18 @@ export function gameReducer(
         ...state,
         gameState: 'finished',
         winner: action.winner,
+        opponentBoard: action.opponent_board,
         message: `Game Over! Winner: ${action.winner}`,
       };
 
     case 'game_resumed':
       return {
         ...state,
-        gameState: 'playing',
+        gameState: (action.game_state as GameState) || 'playing',
         ownBoard: action.own_board,
         opponentBoard: action.opponent_board,
         currentTurn: action.current_turn,
+        winner: action.winner ?? null,
         message: 'Reconnected to game',
       };
 
