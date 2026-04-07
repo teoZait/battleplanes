@@ -26,9 +26,6 @@ function App() {
 
   const { send, connectionStatus } = useGameWebSocket({
     gameId,
-    onOpen: () => {
-      dispatch({ type: 'error', message: 'Connected to game' });
-    },
     onMessage: dispatch,
     onClose: () => {
       dispatch({ type: 'error', message: 'Disconnected from game' });
@@ -82,6 +79,7 @@ function App() {
         state.gameState !== 'playing' ||
         state.playerId !== state.currentTurn ||
         isOwnBoard ||
+        !state.opponentConnected ||
         state.opponentBoard[y][x] !== 'empty'
       ) {
         return;
@@ -91,6 +89,26 @@ function App() {
     },
     [state, send]
   );
+
+  const handleContinueGame = useCallback(async () => {
+    if (!gameId) return;
+    const token = localStorage.getItem(`game_token_${gameId}`);
+    if (!token) return;
+
+    const res = await fetch(`${API_URL}/game/${gameId}/continue`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_token: token }),
+    });
+    if (!res.ok) return;
+
+    const data = await res.json();
+    // Store the new session token before switching games
+    localStorage.setItem(`game_token_${data.game_id}`, data.session_token);
+    // Clear old state immediately and show transition message
+    dispatch({ type: 'game_continued', message: 'Switched to new game. Waiting for opponent to connect...' });
+    setGameId(data.game_id);
+  }, [gameId]);
 
   return (
     <div className="App">
@@ -193,43 +211,84 @@ function App() {
             winner={state.winner}
             gameId={gameId}
             connectionStatus={connectionStatus}
+            sessionExpired={state.sessionExpired}
+            onContinueGame={handleContinueGame}
           />
 
-          {state.gameState === 'placing' && (
-            <PlanePlacement onPlanesPlaced={handlePlanesPlaced} />
-          )}
+          <div className="game-content-wrapper">
+            <div className={state.waitingForOpponent ? 'game-content-blurred' : ''}>
+              {state.gameState === 'placing' && state.planesPlaced < 2 && (
+                <PlanePlacement onPlanesPlaced={handlePlanesPlaced} disabled={!state.opponentConnected} />
+              )}
+              {state.gameState === 'placing' && state.planesPlaced === 2 && (
+                <div className="game-boards">
+                  <div className="board-container">
+                    <h3>Your Airspace</h3>
+                    <ZoomableBoard>
+                      <GameBoard board={state.ownBoard} onCellClick={() => {}} isOwnBoard />
+                    </ZoomableBoard>
+                  </div>
+                </div>
+              )}
 
-          {(state.gameState === 'playing' ||
-            state.gameState === 'finished') && (
-            <div className="game-boards">
-              <div className="board-container">
-                <h3>Your Airspace</h3>
-                <ZoomableBoard>
-                  <GameBoard
-                    board={state.ownBoard}
-                    onCellClick={(x, y) =>
-                      handleCellClick(x, y, true)
-                    }
-                    isOwnBoard
-                  />
-                </ZoomableBoard>
-              </div>
-              <div className="board-container">
-                <h3>Enemy Airspace</h3>
-                <ZoomableBoard>
-                  <GameBoard
-                    board={state.opponentBoard}
-                    onCellClick={(x, y) =>
-                      handleCellClick(x, y, false)
-                    }
-                    isOwnBoard={false}
-                    isMyTurn={state.gameState === 'playing' ? state.playerId === state.currentTurn : undefined}
-                    gameFinished={state.gameState === 'finished'}
-                  />
-                </ZoomableBoard>
-              </div>
+              {(state.gameState === 'playing' ||
+                state.gameState === 'finished') && (
+                <div className="game-boards">
+                  <div className="board-container">
+                    <h3>Your Airspace</h3>
+                    <ZoomableBoard>
+                      <GameBoard
+                        board={state.ownBoard}
+                        onCellClick={(x, y) =>
+                          handleCellClick(x, y, true)
+                        }
+                        isOwnBoard
+                      />
+                    </ZoomableBoard>
+                  </div>
+                  <div className="board-container">
+                    <h3>Enemy Airspace</h3>
+                    <ZoomableBoard>
+                      <GameBoard
+                        board={state.opponentBoard}
+                        onCellClick={(x, y) =>
+                          handleCellClick(x, y, false)
+                        }
+                        isOwnBoard={false}
+                        isMyTurn={state.gameState === 'playing' ? state.playerId === state.currentTurn : undefined}
+                        gameFinished={state.gameState === 'finished'}
+                      />
+                    </ZoomableBoard>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+
+            {state.waitingForOpponent && (
+              <div className="waiting-overlay">
+                <div className="waiting-overlay-content">
+                  <div className="waiting-overlay-icon">
+                    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M32 4L28 20H12L8 28H26L22 52L28 48V60L32 56L36 60V48L42 52L38 28H56L52 20H36L32 4Z"
+                            fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                      <circle cx="32" cy="14" r="2.5" fill="currentColor" opacity="0.8"/>
+                    </svg>
+                  </div>
+                  {state.opponentConnected ? (
+                    <>
+                      <p>Waiting for opponent to connect...</p>
+                      <p className="waiting-overlay-hint">Share the Game ID above with your opponent</p>
+                    </>
+                  ) : (
+                    <>
+                      <p>Opponent disconnected</p>
+                      <p className="waiting-overlay-hint">Waiting for them to reconnect...</p>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>

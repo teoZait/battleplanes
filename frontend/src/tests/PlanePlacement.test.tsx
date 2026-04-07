@@ -258,6 +258,74 @@ describe('PlanePlacement - Shake Animation', () => {
   });
 });
 
+describe('PlanePlacement - Disabled State', () => {
+
+  it('should not place a plane when disabled', () => {
+    const { container } = render(
+      <PlanePlacement onPlanesPlaced={vi.fn()} disabled={true} />
+    );
+
+    const rows = container.querySelectorAll('.placement-board .board-row');
+    const cell = rows[2].querySelectorAll('.cell')[5];
+
+    fireEvent.mouseEnter(cell);
+    fireEvent.click(cell);
+
+    // Should still say "Place 2 more planes" — nothing placed
+    expect(container.textContent).toContain('Place 2 more planes');
+    expect(container.querySelectorAll('.cell.plane, .cell.head')).toHaveLength(0);
+  });
+
+  it('should not call onPlanesPlaced when confirm clicked while disabled', () => {
+    const onPlanesPlaced = vi.fn();
+    const { container, rerender } = render(
+      <PlanePlacement onPlanesPlaced={onPlanesPlaced} />
+    );
+
+    const rows = container.querySelectorAll('.placement-board .board-row');
+
+    // Place two planes while enabled
+    const cell1 = rows[2].querySelectorAll('.cell')[2];
+    fireEvent.mouseEnter(cell1);
+    fireEvent.click(cell1);
+
+    const cell2 = rows[2].querySelectorAll('.cell')[7];
+    fireEvent.mouseEnter(cell2);
+    fireEvent.click(cell2);
+
+    // Now disable and try to confirm
+    rerender(<PlanePlacement onPlanesPlaced={onPlanesPlaced} disabled={true} />);
+
+    const confirmBtn = container.querySelector('.btn-primary')!;
+    fireEvent.click(confirmBtn);
+
+    expect(onPlanesPlaced).not.toHaveBeenCalled();
+  });
+
+  it('should disable the confirm button when disabled', () => {
+    const { container, rerender } = render(
+      <PlanePlacement onPlanesPlaced={vi.fn()} />
+    );
+
+    const rows = container.querySelectorAll('.placement-board .board-row');
+
+    // Place two planes
+    const cell1 = rows[2].querySelectorAll('.cell')[2];
+    fireEvent.mouseEnter(cell1);
+    fireEvent.click(cell1);
+
+    const cell2 = rows[2].querySelectorAll('.cell')[7];
+    fireEvent.mouseEnter(cell2);
+    fireEvent.click(cell2);
+
+    // Re-render with disabled
+    rerender(<PlanePlacement onPlanesPlaced={vi.fn()} disabled={true} />);
+
+    const confirmBtn = container.querySelector('.btn-primary') as HTMLButtonElement;
+    expect(confirmBtn.disabled).toBe(true);
+  });
+});
+
 describe('PlanePlacement - Rotation', () => {
 
   it('should cycle through orientations on rotate button click', () => {

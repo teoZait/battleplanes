@@ -10,9 +10,11 @@ interface GameInfoProps {
   winner: string | null;
   gameId: string | null;
   connectionStatus: ConnectionStatus;
+  sessionExpired?: boolean;
+  onContinueGame?: () => void;
 }
 
-const GameInfo = ({ gameState, playerId, currentTurn, message, winner, gameId, connectionStatus }: GameInfoProps) => {
+const GameInfo = ({ gameState, playerId, currentTurn, message, winner, gameId, connectionStatus, sessionExpired, onContinueGame }: GameInfoProps) => {
   const isMyTurn = playerId === currentTurn;
 
   const copyGameId = () => {
@@ -81,7 +83,18 @@ const GameInfo = ({ gameState, playerId, currentTurn, message, winner, gameId, c
         </div>
       )}
 
-      {message && (
+      {sessionExpired && (
+        <div className="session-expired-banner">
+          <p>Your opponent's session has expired and they cannot rejoin this game.</p>
+          {onContinueGame && (
+            <button className="btn btn-primary" onClick={onContinueGame}>
+              Continue in New Game
+            </button>
+          )}
+        </div>
+      )}
+
+      {message && !sessionExpired && (
         <div className="message-box">
           <p>{message}</p>
         </div>

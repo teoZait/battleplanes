@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from application.game_service import GameService
-from application.schemas import parse_client_message, AuthMessage
+from application.schemas import parse_client_message, AuthMessage, ContinueGameRequest
 from domain.models import GameState
 from infrastructure.game_store import GameStore
 
@@ -183,6 +183,15 @@ async def get_game(game_id: str):
     return game_info
 
 
+@app.post("/game/{game_id}/continue")
+async def continue_game(game_id: str, body: ContinueGameRequest):
+    """Create a new game that continues from the state of an existing one."""
+    result = await game_service.continue_game(game_id, body.session_token)
+    if not result:
+        raise HTTPException(status_code=400, detail="Cannot continue this game")
+    return result
+
+
 # WebSocket security limits
 _WS_MSG_PER_SECOND = 10
 _WS_MAX_MSG_SIZE = 1024  # bytes (valid game messages are < 200 bytes)
@@ -232,6 +241,18 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
     )
 
     if player_id is None:
+        # Notify remaining players that a rejoin attempt failed
+        await game_service.connection_manager.broadcast_to_game(game_id, {
+            "type": "opponent_session_expired",
+            "message": "Your opponent's session has expired and they cannot rejoin this game.",
+        })
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Unable to join game. Your session may have expired or the game is full.",
+            })
+        except Exception:
+            pass
         await websocket.close(code=1008)
         return
 
@@ -302,11 +323,11 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
                     })
 
     except WebSocketDisconnect:
-        await game_service.handle_player_disconnection(game_id, player_id)
+        await game_service.handle_player_disconnection(game_id, player_id, websocket)
     # #16 — Catch any other exception so disconnection cleanup always runs
     except Exception:
         logger.exception("WebSocket error for game=%s player=%s", game_id, player_id)
-        await game_service.handle_player_disconnection(game_id, player_id)
+        await game_service.handle_player_disconnection(game_id, player_id, websocket)
         try:
             await websocket.close(code=1011)
         except Exception:

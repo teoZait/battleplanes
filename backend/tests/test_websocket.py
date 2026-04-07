@@ -183,9 +183,10 @@ class TestConnection:
 
     def test_third_player_rejected(self, two_player_game, client):
         game_id, _, _ = two_player_game
-        with pytest.raises(Exception):
-            with _ws_connect(client, game_id) as ws3:
-                ws3.receive_json()
+        with _ws_connect(client, game_id) as ws3:
+            msg = ws3.receive_json()
+            assert msg["type"] == "error"
+            assert "expired" in msg["message"].lower() or "full" in msg["message"].lower()
 
 
 # ---------------------------------------------------------------------------
@@ -436,6 +437,119 @@ class TestEndOfGameReveal:
 
 
 # ---------------------------------------------------------------------------
+# Disconnect during placement
+# ---------------------------------------------------------------------------
+
+class TestPlacementDisconnect:
+
+    def test_reconnect_during_placing(self, client):
+        """Reconnecting during PLACING should restore board state."""
+        game_id = _create_game(client)
+        with _ws_connect(client, game_id) as ws1:
+            p1 = ws1.receive_json()
+            token1 = p1["session_token"]
+
+            with _ws_connect(client, game_id) as ws2:
+                ws2.receive_json()  # player_assigned
+                ws1.receive_json()  # game_ready
+                ws2.receive_json()  # game_ready
+
+                # P1 places one plane
+                ws1.send_json(PLANE_1)
+                ws1.receive_json()  # plane_placed
+
+            # ws2 disconnected; ws1 gets notification
+            ws1.receive_json()  # player_disconnected
+
+        # ws1 also disconnected; reconnect ws1
+        with _ws_connect(client, game_id, token=token1) as ws1_new:
+            assigned = ws1_new.receive_json()
+            assert assigned["type"] == "player_assigned"
+            assert assigned["game_state"] == "placing"
+
+            resumed = ws1_new.receive_json()
+            assert resumed["type"] == "game_resumed"
+            assert resumed["game_state"] == "placing"
+            assert resumed["planes_placed"] == 1
+
+    def test_placement_blocked_when_opponent_disconnected(self, client):
+        """Placing a plane while opponent is disconnected must return an error."""
+        game_id = _create_game(client)
+        with _ws_connect(client, game_id) as ws1:
+            ws1.receive_json()  # player_assigned
+
+            with _ws_connect(client, game_id) as ws2:
+                ws2.receive_json()  # player_assigned
+                ws1.receive_json()  # game_ready
+                ws2.receive_json()  # game_ready
+
+            # ws2 disconnected
+            ws1.receive_json()  # player_disconnected
+
+            # Try to place a plane — should be rejected
+            ws1.send_json(PLANE_1)
+            err = ws1.receive_json()
+            assert err["type"] == "error"
+            assert "disconnected" in err["message"].lower()
+
+    def test_attack_blocked_when_opponent_disconnected(self, client):
+        """Attacking while opponent is disconnected must return an error."""
+        game_id = _create_game(client)
+        with _ws_connect(client, game_id) as ws1:
+            ws1.receive_json()  # player_assigned
+
+            with _ws_connect(client, game_id) as ws2:
+                ws2.receive_json()  # player_assigned
+                ws1.receive_json()  # game_ready
+                ws2.receive_json()  # game_ready
+                _place_all_planes(ws1, ws2)
+
+            # ws2 disconnected during PLAYING
+            ws1.receive_json()  # player_disconnected
+
+            # P1 tries to attack — should be rejected
+            ws1.send_json({"type": "attack", "x": 5, "y": 5})
+            err = ws1.receive_json()
+            assert err["type"] == "error"
+            assert "disconnected" in err["message"].lower()
+
+    def test_reconnect_after_confirming_planes_preserves_state(self, client):
+        """Reconnecting after placing 2 planes should restore them in game_resumed."""
+        game_id = _create_game(client)
+        with contextlib.ExitStack() as stack:
+            ws1 = stack.enter_context(_ws_connect(client, game_id))
+            p1 = ws1.receive_json()
+            token1 = p1["session_token"]
+
+            ws2 = stack.enter_context(_ws_connect(client, game_id))
+            ws2.receive_json()  # player_assigned
+            ws1.receive_json()  # game_ready
+            ws2.receive_json()  # game_ready
+
+            # P1 places both planes
+            ws1.send_json(PLANE_1)
+            ws1.receive_json()  # plane_placed
+            ws1.send_json(PLANE_2)
+            ws1.receive_json()  # plane_placed
+
+        # Both disconnected; reconnect P1
+        with _ws_connect(client, game_id, token=token1) as ws1_new:
+            assigned = ws1_new.receive_json()
+            assert assigned["type"] == "player_assigned"
+            assert assigned["game_state"] == "placing"
+
+            resumed = ws1_new.receive_json()
+            assert resumed["type"] == "game_resumed"
+            assert resumed["planes_placed"] == 2
+
+            # Board should have plane cells
+            hx, hy = PLANE_1_HEAD
+            assert resumed["own_board"][hy][hx] == "head"
+            hx2, hy2 = PLANE_2_HEAD
+            assert resumed["own_board"][hy2][hx2] == "head"
+
+
+# ---------------------------------------------------------------------------
 # Disconnect / reconnection
 # ---------------------------------------------------------------------------
 
@@ -567,9 +681,9 @@ class TestSessionTokenAuth:
                 ws2.receive_json()  # game_ready
 
         # Both disconnected; try to reconnect with wrong token
-        with pytest.raises(Exception):
-            with _ws_connect(client, game_id, token="invalid-token") as ws:
-                ws.receive_json()
+        with _ws_connect(client, game_id, token="invalid-token") as ws:
+            msg = ws.receive_json()
+            assert msg["type"] == "error"
 
     def test_reconnect_without_token_on_claimed_slot_rejected(self, client):
         game_id = _create_game(client)
@@ -581,9 +695,9 @@ class TestSessionTokenAuth:
                 ws2.receive_json()
 
         # Both disconnected; try to reconnect without token (slots have tokens)
-        with pytest.raises(Exception):
-            with _ws_connect(client, game_id) as ws:
-                ws.receive_json()
+        with _ws_connect(client, game_id) as ws:
+            msg = ws.receive_json()
+            assert msg["type"] == "error"
 
     def test_invalid_auth_message_rejected(self, client):
         """Sending garbage instead of an auth message should close the connection."""
@@ -699,6 +813,181 @@ class TestWebSocketOriginValidation:
         with _ws_connect(client, game_id) as ws:
             msg = ws.receive_json()
             assert msg["type"] == "player_assigned"
+
+
+# ---------------------------------------------------------------------------
+# Game info endpoint hardening (#18)
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Session expired notification & continue game
+# ---------------------------------------------------------------------------
+
+class TestSessionExpiredNotification:
+
+    def test_failed_rejoin_notifies_remaining_player(self, client):
+        """When a rejoin fails, the remaining connected player gets opponent_session_expired."""
+        game_id = _create_game(client)
+        with contextlib.ExitStack() as stack:
+            ws1 = stack.enter_context(_ws_connect(client, game_id))
+            p1 = ws1.receive_json()
+            token1 = p1["session_token"]
+
+            ws2 = stack.enter_context(_ws_connect(client, game_id))
+            ws2.receive_json()
+            ws1.receive_json()  # game_ready
+            ws2.receive_json()  # game_ready
+
+        # Both disconnected — player1 reconnects
+        with _ws_connect(client, game_id, token=token1) as ws1:
+            ws1.receive_json()  # player_assigned
+            ws1.receive_json()  # game_resumed
+            ws1.receive_json()  # game_ready
+
+            # Someone tries to join without a valid token (simulating expired session)
+            with _ws_connect(client, game_id) as ws_bad:
+                ws_bad.receive_json()  # error message
+
+            # player1 should have received opponent_session_expired
+            msg = ws1.receive_json()
+            assert msg["type"] == "opponent_session_expired"
+
+    def test_failed_rejoin_with_bad_token_notifies(self, client):
+        """A bad token rejoin should also notify remaining players."""
+        game_id = _create_game(client)
+        with contextlib.ExitStack() as stack:
+            ws1 = stack.enter_context(_ws_connect(client, game_id))
+            p1 = ws1.receive_json()
+            token1 = p1["session_token"]
+
+            ws2 = stack.enter_context(_ws_connect(client, game_id))
+            ws2.receive_json()
+            ws1.receive_json()  # game_ready
+            ws2.receive_json()  # game_ready
+
+        # Reconnect player1
+        with _ws_connect(client, game_id, token=token1) as ws1:
+            ws1.receive_json()  # player_assigned
+            ws1.receive_json()  # game_resumed
+            ws1.receive_json()  # game_ready
+
+            # Bad token attempt
+            with _ws_connect(client, game_id, token="invalid-token") as ws_bad:
+                ws_bad.receive_json()  # error
+
+            msg = ws1.receive_json()
+            assert msg["type"] == "opponent_session_expired"
+
+
+class TestContinueGameEndpoint:
+
+    def test_creates_continuation_game(self, client):
+        """POST /game/{id}/continue should return a new game ID and token."""
+        game_id = _create_game(client)
+        with contextlib.ExitStack() as stack:
+            ws1 = stack.enter_context(_ws_connect(client, game_id))
+            p1 = ws1.receive_json()
+            token1 = p1["session_token"]
+
+            ws2 = stack.enter_context(_ws_connect(client, game_id))
+            ws2.receive_json()
+            ws1.receive_json()  # game_ready
+            ws2.receive_json()  # game_ready
+
+            _place_all_planes(ws1, ws2)
+
+        res = client.post(
+            f"/game/{game_id}/continue",
+            json={"session_token": token1},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert "game_id" in data
+        assert "session_token" in data
+        assert data["player_id"] == "player1"
+        assert data["game_id"] != game_id
+
+    def test_continuation_preserves_state(self, client):
+        """Connecting to a continuation game should resume with the same board state."""
+        game_id = _create_game(client)
+        with contextlib.ExitStack() as stack:
+            ws1 = stack.enter_context(_ws_connect(client, game_id))
+            p1 = ws1.receive_json()
+            token1 = p1["session_token"]
+
+            ws2 = stack.enter_context(_ws_connect(client, game_id))
+            ws2.receive_json()
+            ws1.receive_json()  # game_ready
+            ws2.receive_json()  # game_ready
+
+            _place_all_planes(ws1, ws2)
+
+            # P1 attacks an empty cell (miss)
+            _do_attack(ws1, ws2, *EMPTY_CELL)
+            _consume_turn_changed(ws1, ws2)
+
+        # Create continuation
+        res = client.post(
+            f"/game/{game_id}/continue",
+            json={"session_token": token1},
+        )
+        data = res.json()
+        new_game_id = data["game_id"]
+        new_token = data["session_token"]
+
+        # Connect to new game with the continuation token
+        with _ws_connect(client, new_game_id, token=new_token) as ws1:
+            assigned = ws1.receive_json()
+            assert assigned["type"] == "player_assigned"
+            assert assigned["game_state"] == "playing"
+
+            resumed = ws1.receive_json()
+            assert resumed["type"] == "game_resumed"
+            assert resumed["current_turn"] == "player2"  # turn preserved
+            # The miss should be on the opponent board
+            assert resumed["opponent_board"][EMPTY_CELL[1]][EMPTY_CELL[0]] == "miss"
+
+    def test_opponent_can_join_continuation_without_token(self, client):
+        """The opponent should be able to join the continuation with no token."""
+        game_id = _create_game(client)
+        with contextlib.ExitStack() as stack:
+            ws1 = stack.enter_context(_ws_connect(client, game_id))
+            p1 = ws1.receive_json()
+            token1 = p1["session_token"]
+
+            ws2 = stack.enter_context(_ws_connect(client, game_id))
+            ws2.receive_json()
+            ws1.receive_json()
+            ws2.receive_json()
+
+            _place_all_planes(ws1, ws2)
+
+        res = client.post(
+            f"/game/{game_id}/continue",
+            json={"session_token": token1},
+        )
+        data = res.json()
+
+        # Opponent joins the new game without a token → gets the open slot
+        with _ws_connect(client, data["game_id"]) as ws2:
+            assigned = ws2.receive_json()
+            assert assigned["type"] == "player_assigned"
+            assert assigned["player_id"] == "player2"
+
+    def test_rejects_invalid_token(self, client):
+        game_id = _create_game(client)
+        res = client.post(
+            f"/game/{game_id}/continue",
+            json={"session_token": "bad-token"},
+        )
+        assert res.status_code == 400
+
+    def test_rejects_nonexistent_game(self, client):
+        res = client.post(
+            "/game/no-such-game/continue",
+            json={"session_token": "any"},
+        )
+        assert res.status_code == 400
 
 
 # ---------------------------------------------------------------------------

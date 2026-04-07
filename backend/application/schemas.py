@@ -58,6 +58,11 @@ class AuthMessage(BaseModel):
     token: str | None = None
 
 
+class ContinueGameRequest(BaseModel):
+    """HTTP body for POST /game/{game_id}/continue."""
+    session_token: str
+
+
 ClientMessage = Union[PlacePlaneMessage, AttackMessage, GetBoardsMessage]
 
 

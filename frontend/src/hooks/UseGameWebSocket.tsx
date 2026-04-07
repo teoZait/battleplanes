@@ -10,9 +10,10 @@ export type ServerMessage =
   | { type: 'attack_result'; x: number; y: number; result: string; is_attacker: boolean }
   | { type: 'turn_changed'; current_turn: string }
   | { type: 'game_over'; winner: string; opponent_board: CellStatus[][] }
-  | { type: 'game_resumed'; own_board: CellStatus[][]; opponent_board: CellStatus[][]; current_turn: string; game_state?: string; winner?: string | null }
+  | { type: 'game_resumed'; own_board: CellStatus[][]; opponent_board: CellStatus[][]; current_turn: string; game_state?: string; winner?: string | null; planes_placed?: number }
   | { type: 'player_disconnected' }
   | { type: 'player_reconnected'; player_id: string }
+  | { type: 'opponent_session_expired'; message: string }
   | { type: 'error'; message: string };
 
 export type ClientMessage =
@@ -90,12 +91,21 @@ export function useGameWebSocket(params: {
       params.onError?.('WebSocket error');
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       wsRef.current = null;
 
       if (intentionalCloseRef.current) {
         setConnectionStatus('disconnected');
         params.onClose?.();
+        return;
+      }
+
+      // Server explicitly rejected the connection (invalid/expired token,
+      // game full, etc.) — retrying won't help.  The server already sent
+      // a descriptive error via onMessage, so skip the generic onClose
+      // callback to avoid overwriting it.
+      if (event.code === 1008) {
+        setConnectionStatus('disconnected');
         return;
       }
 
@@ -136,7 +146,16 @@ export function useGameWebSocket(params: {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
       }
-      wsRef.current?.close();
+      if (wsRef.current) {
+        // Remove handlers before closing to prevent the stale onclose from
+        // firing after the new effect has already reset intentionalCloseRef.
+        wsRef.current.onopen = null;
+        wsRef.current.onmessage = null;
+        wsRef.current.onerror = null;
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+        wsRef.current = null;
+      }
     };
   }, [params.gameId]);
 

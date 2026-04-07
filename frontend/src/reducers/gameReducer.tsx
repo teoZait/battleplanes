@@ -19,10 +19,14 @@ export interface GameUIState {
   message: string;
   winner: string | null;
   planesPlaced: number;
+  opponentConnected: boolean;
+  sessionExpired: boolean;
+  waitingForOpponent: boolean;
 }
 
 export type UIAction =
-  | { type: 'set_own_board'; board: CellStatus[][] };
+  | { type: 'set_own_board'; board: CellStatus[][] }
+  | { type: 'game_continued'; message: string };
 
 export const createEmptyBoard = (): CellStatus[][] =>
   Array.from({ length: 10 }, () =>
@@ -38,6 +42,9 @@ export const initialGameState: GameUIState = {
   message: '',
   winner: null,
   planesPlaced: 0,
+  opponentConnected: true,
+  sessionExpired: false,
+  waitingForOpponent: false,
 };
 
 export function gameReducer(
@@ -47,16 +54,19 @@ export function gameReducer(
   switch (action.type) {
     case 'player_assigned':
       return {
-        ...state,
+        ...initialGameState,
         playerId: action.player_id,
         gameState: action.game_state,
         message: `You are ${action.player_id}`,
+        waitingForOpponent: state.waitingForOpponent,
       };
 
     case 'game_ready':
       return {
         ...state,
         gameState: 'placing',
+        opponentConnected: true,
+        waitingForOpponent: false,
         message: action.message,
       };
 
@@ -135,19 +145,34 @@ export function gameReducer(
         opponentBoard: action.opponent_board,
         currentTurn: action.current_turn,
         winner: action.winner ?? null,
-        message: 'Reconnected to game',
+        planesPlaced: action.planes_placed ?? state.planesPlaced,
+        opponentConnected: true,
+        message: state.waitingForOpponent ? state.message : 'Reconnected to game',
       };
 
     case 'player_disconnected':
       return {
         ...state,
+        opponentConnected: false,
+        waitingForOpponent: true,
         message: 'Opponent disconnected',
       };
 
     case 'player_reconnected':
       return {
         ...state,
+        opponentConnected: true,
+        waitingForOpponent: false,
         message: 'Opponent reconnected',
+      };
+
+    case 'opponent_session_expired':
+      return {
+        ...state,
+        opponentConnected: false,
+        sessionExpired: true,
+        waitingForOpponent: false,
+        message: action.message,
       };
 
     case 'error':
@@ -160,6 +185,13 @@ export function gameReducer(
       return {
         ...state,
         ownBoard: action.board,
+      };
+
+    case 'game_continued':
+      return {
+        ...initialGameState,
+        message: action.message,
+        waitingForOpponent: true,
       };
 
     default: {

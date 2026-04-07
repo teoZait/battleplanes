@@ -173,7 +173,7 @@ describe('useGameWebSocket', () => {
       expect(ws.readyState).toBe(MockWebSocket.CLOSED);
     });
 
-    it('should call onClose on intentional close', () => {
+    it('should not call onClose on intentional close (unmount/game switch)', () => {
       const onMessage = vi.fn();
       const onClose = vi.fn();
       const { unmount } = renderHook(() =>
@@ -183,7 +183,7 @@ describe('useGameWebSocket', () => {
       act(() => latestWS().simulateOpen());
       act(() => unmount());
 
-      expect(onClose).toHaveBeenCalledOnce();
+      expect(onClose).not.toHaveBeenCalled();
     });
 
     it('should close previous connection when gameId changes', () => {

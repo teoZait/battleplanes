@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import GameInfo from '../components/GameInfo';
 import type { GameState } from '../reducers/gameReducer';
@@ -137,5 +137,65 @@ describe('GameInfo - Existing Functionality Preserved', () => {
     const { container } = render(<GameInfo {...defaultProps} message="" />);
 
     expect(container.querySelector('.message-box')).toBeNull();
+  });
+});
+
+describe('GameInfo - Session Expired Banner', () => {
+
+  it('should not show session expired banner by default', () => {
+    const { container } = render(<GameInfo {...defaultProps} />);
+
+    expect(container.querySelector('.session-expired-banner')).toBeNull();
+  });
+
+  it('should not show session expired banner when sessionExpired is false', () => {
+    const { container } = render(<GameInfo {...defaultProps} sessionExpired={false} />);
+
+    expect(container.querySelector('.session-expired-banner')).toBeNull();
+  });
+
+  it('should show session expired banner when sessionExpired is true', () => {
+    const { container } = render(<GameInfo {...defaultProps} sessionExpired={true} />);
+
+    expect(container.querySelector('.session-expired-banner')).not.toBeNull();
+    expect(container.textContent).toContain('session has expired');
+  });
+
+  it('should show continue button when onContinueGame is provided', () => {
+    const { container } = render(
+      <GameInfo {...defaultProps} sessionExpired={true} onContinueGame={() => {}} />
+    );
+
+    const btn = container.querySelector('.session-expired-banner .btn');
+    expect(btn).not.toBeNull();
+    expect(btn!.textContent).toContain('Continue in New Game');
+  });
+
+  it('should not show continue button when onContinueGame is not provided', () => {
+    const { container } = render(
+      <GameInfo {...defaultProps} sessionExpired={true} />
+    );
+
+    const btn = container.querySelector('.session-expired-banner .btn');
+    expect(btn).toBeNull();
+  });
+
+  it('should hide message box when sessionExpired is true', () => {
+    const { container } = render(
+      <GameInfo {...defaultProps} sessionExpired={true} message="Some message" />
+    );
+
+    expect(container.querySelector('.message-box')).toBeNull();
+  });
+
+  it('should call onContinueGame when continue button is clicked', () => {
+    const onContinue = vi.fn();
+    const { container } = render(
+      <GameInfo {...defaultProps} sessionExpired={true} onContinueGame={onContinue} />
+    );
+
+    const btn = container.querySelector('.session-expired-banner .btn') as HTMLButtonElement;
+    btn.click();
+    expect(onContinue).toHaveBeenCalledOnce();
   });
 });

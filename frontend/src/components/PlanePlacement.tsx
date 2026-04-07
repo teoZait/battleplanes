@@ -10,11 +10,12 @@ interface Plane {
 
 interface PlanePlacementProps {
   onPlanesPlaced: (planes: Plane[]) => void;
+  disabled?: boolean;
 }
 
 type CellStatus = 'empty' | 'plane' | 'head' | 'hover' | 'invalid';
 
-const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
+const PlanePlacement = ({ onPlanesPlaced, disabled }: PlanePlacementProps) => {
   const [board, setBoard] = useState<CellStatus[][]>(
     Array(10).fill(null).map(() => Array(10).fill('empty'))
   );
@@ -45,7 +46,7 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
   };
 
   const handleCellClick = (x: number, y: number) => {
-    if (placedPlanes.length >= 2) return;
+    if (disabled || placedPlanes.length >= 2) return;
 
     // Compute positions directly (works for both mouse and touch paths)
     const { positions } = getPlanePositions(x, y, orientation);
@@ -81,7 +82,7 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
   };
 
   const handleCellTouch = (x: number, y: number) => {
-    if (placedPlanes.length >= 2) return;
+    if (disabled || placedPlanes.length >= 2) return;
 
     // Second tap on same cell: place the plane
     if (touchPreviewPos?.x === x && touchPreviewPos?.y === y) {
@@ -95,7 +96,7 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
   };
 
   const handleConfirm = () => {
-    if (placedPlanes.length === 2) {
+    if (!disabled && placedPlanes.length === 2) {
       onPlanesPlaced(placedPlanes);
     }
   };
@@ -207,7 +208,7 @@ const PlanePlacement = ({ onPlanesPlaced }: PlanePlacementProps) => {
           Reset
         </button>
         {placedPlanes.length === 2 && (
-          <button onClick={handleConfirm} className="btn btn-primary">
+          <button onClick={handleConfirm} className="btn btn-primary" disabled={disabled}>
             Confirm Placement
           </button>
         )}
