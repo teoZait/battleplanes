@@ -19,5 +19,5 @@ jobs:
           script: |
             cd /opt/battleplanes
             git pull origin main
-            docker compose -f docker-compose.yaml -f docker-compose.prod.yaml build
-            docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up -d
+            docker compose -f docker-compose.yaml -f docker-compose.prod.yaml build --no-cache
+            docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up -d --force-recreate
