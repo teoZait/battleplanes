@@ -7,6 +7,7 @@ from application.schemas import (
     AttackMessage,
     GetBoardsMessage,
     AuthMessage,
+    CreateGameRequest,
     parse_client_message,
 )
 
@@ -195,3 +196,21 @@ class TestParseClientMessage:
         })
         assert isinstance(msg, AttackMessage)
         assert msg.x == 3
+
+
+class TestCreateGameRequest:
+    """Test CreateGameRequest schema validation."""
+
+    def test_valid_modes_accepted(self):
+        for mode in ("classic", "elite"):
+            req = CreateGameRequest.model_validate({"mode": mode})
+            assert req.mode == mode
+
+    def test_default_mode_is_classic(self):
+        assert CreateGameRequest().mode == "classic"
+        assert CreateGameRequest.model_validate({}).mode == "classic"
+
+    def test_invalid_modes_rejected(self):
+        for bad in ("chaos", "", "CLASSIC"):
+            with pytest.raises(Exception):
+                CreateGameRequest(mode=bad)

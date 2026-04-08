@@ -19,6 +19,8 @@ export interface GameUIState {
   message: string;
   winner: string | null;
   planesPlaced: number;
+  maxPlanes: number;
+  gameMode: string;
   opponentConnected: boolean;
   sessionExpired: boolean;
   waitingForOpponent: boolean;
@@ -42,6 +44,8 @@ export const initialGameState: GameUIState = {
   message: '',
   winner: null,
   planesPlaced: 0,
+  maxPlanes: 2,
+  gameMode: 'classic',
   opponentConnected: true,
   sessionExpired: false,
   waitingForOpponent: false,
@@ -58,6 +62,8 @@ export function gameReducer(
         playerId: action.player_id,
         gameState: action.game_state,
         message: `You are ${action.player_id}`,
+        maxPlanes: action.max_planes ?? 2,
+        gameMode: action.mode ?? 'classic',
         waitingForOpponent: state.waitingForOpponent,
       };
 
@@ -70,14 +76,16 @@ export function gameReducer(
         message: action.message,
       };
 
-    case 'plane_placed':
+    case 'plane_placed': {
+      const remaining = state.maxPlanes - action.planes_count;
       return {
         ...state,
         message: action.success
-          ? `Plane ${action.planes_count} placed! ${action.planes_count === 2 ? 'Waiting for opponent...' : 'Place one more plane'}`
+          ? `Plane ${action.planes_count} placed! ${remaining === 0 ? 'Waiting for opponent...' : `Place ${remaining} more plane${remaining === 1 ? '' : 's'}`}`
           : `Error: ${action.message}`,
         planesPlaced: action.success ? action.planes_count : state.planesPlaced,
       };
+    }
 
     case 'game_started':
       return {

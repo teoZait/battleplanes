@@ -516,6 +516,8 @@ describe('gameReducer - message sequences', () => {
       message: 'old message',
       winner: 'player2',
       planesPlaced: 2,
+      maxPlanes: 2,
+      gameMode: 'classic',
       opponentConnected: false,
       sessionExpired: true,
       waitingForOpponent: false,
@@ -586,5 +588,76 @@ describe('gameReducer - message sequences', () => {
     } as ServerMessage);
     expect(s2.waitingForOpponent).toBe(false);
     expect(s2.sessionExpired).toBe(true);
+  });
+});
+
+// ── Game mode support ──────────────────────────────────────────────────
+
+describe('gameReducer - game mode', () => {
+
+  it('should default maxPlanes to 2 and gameMode to classic', () => {
+    expect(initialGameState.maxPlanes).toBe(2);
+    expect(initialGameState.gameMode).toBe('classic');
+  });
+
+  it('player_assigned should set mode and maxPlanes from server', () => {
+    const action: ServerMessage = {
+      type: 'player_assigned',
+      player_id: 'player1',
+      game_state: 'placing',
+      max_planes: 3,
+      mode: 'elite',
+    };
+    const state = gameReducer(initialGameState, action);
+    expect(state.maxPlanes).toBe(3);
+    expect(state.gameMode).toBe('elite');
+  });
+
+  it('player_assigned without mode defaults to classic/2', () => {
+    const action: ServerMessage = {
+      type: 'player_assigned',
+      player_id: 'player1',
+      game_state: 'waiting',
+    };
+    const state = gameReducer(initialGameState, action);
+    expect(state.maxPlanes).toBe(2);
+    expect(state.gameMode).toBe('classic');
+  });
+
+  it('game_continued should reset maxPlanes and gameMode to defaults', () => {
+    const eliteState: GameUIState = {
+      ...baseState,
+      maxPlanes: 3,
+      gameMode: 'elite',
+      planesPlaced: 3,
+    };
+    const state = gameReducer(eliteState, { type: 'game_continued', message: 'New game.' });
+    expect(state.maxPlanes).toBe(2);
+    expect(state.gameMode).toBe('classic');
+  });
+
+  it('plane_placed message reflects remaining count for elite mode', () => {
+    const eliteState: GameUIState = { ...baseState, maxPlanes: 3, gameMode: 'elite' };
+
+    // 1 of 3 placed → "2 more planes"
+    const s1 = gameReducer(eliteState, {
+      type: 'plane_placed', success: true, message: 'OK', planes_count: 1,
+    } as ServerMessage);
+    expect(s1.planesPlaced).toBe(1);
+    expect(s1.message).toContain('2 more planes');
+
+    // 2 of 3 placed → "1 more plane" (singular)
+    const s2 = gameReducer({ ...eliteState, planesPlaced: 1 }, {
+      type: 'plane_placed', success: true, message: 'OK', planes_count: 2,
+    } as ServerMessage);
+    expect(s2.message).toContain('1 more plane');
+    expect(s2.message).not.toContain('planes');
+
+    // 3 of 3 placed → "Waiting for opponent"
+    const s3 = gameReducer({ ...eliteState, planesPlaced: 2 }, {
+      type: 'plane_placed', success: true, message: 'OK', planes_count: 3,
+    } as ServerMessage);
+    expect(s3.planesPlaced).toBe(3);
+    expect(s3.message).toContain('Waiting for opponent');
   });
 });

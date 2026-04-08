@@ -257,6 +257,40 @@ class TestExistingEndpoints:
         assert "current_turn" not in data
 
 
+class TestGameModeAPI:
+    """Test game creation with mode parameter."""
+
+    def _get_fresh_client(self):
+        import importlib
+        import main as main_module
+        importlib.reload(main_module)
+        return TestClient(main_module.app)
+
+    def test_create_game_defaults_to_classic(self):
+        client = self._get_fresh_client()
+        data = client.post("/game/create").json()
+        assert data["mode"] == "classic"
+
+    def test_create_game_with_elite_mode(self):
+        client = self._get_fresh_client()
+        response = client.post("/game/create", json={"mode": "elite"})
+        assert response.status_code == 200
+        data = response.json()
+        assert "game_id" in data
+        assert data["mode"] == "elite"
+
+    def test_create_game_with_invalid_mode_rejected(self):
+        client = self._get_fresh_client()
+        response = client.post("/game/create", json={"mode": "invalid"})
+        assert response.status_code == 422
+
+    def test_get_game_includes_mode(self):
+        """Mode should be persisted and returned by GET /game/{id}."""
+        client = self._get_fresh_client()
+        game_id = client.post("/game/create", json={"mode": "elite"}).json()["game_id"]
+        assert client.get(f"/game/{game_id}").json()["mode"] == "elite"
+
+
 class TestClientIPResolution:
     """#23 — Rate limiting should use the real client IP from X-Forwarded-For."""
 

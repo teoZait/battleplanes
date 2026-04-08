@@ -4,7 +4,7 @@ Domain Models - Core entities
 import time
 from typing import List, Tuple, Dict, Optional
 from pydantic import BaseModel
-from .value_objects import PlaneOrientation, GameState, CellStatus
+from .value_objects import PlaneOrientation, GameState, GameMode, CellStatus
 from .game_logic import get_plane_positions, is_valid_placement
 
 
@@ -39,8 +39,9 @@ class Plane(BaseModel):
 class Game:
     """Game aggregate root - manages all game state and rules"""
     
-    def __init__(self, game_id: str):
+    def __init__(self, game_id: str, mode: GameMode = GameMode.CLASSIC):
         self.id = game_id
+        self.mode = mode
         self.players: Dict[str, Optional[object]] = {"player1": None, "player2": None}
         self.boards: Dict[str, List[List[str]]] = {
             "player1": [["empty" for _ in range(10)] for _ in range(10)],
@@ -61,9 +62,9 @@ class Game:
         Returns:
             Tuple of (success, message)
         """
-        # Check if player already has 2 planes
-        if len(self.planes[player_id]) >= 2:
-            return False, "Already placed 2 planes"
+        max_planes = self.mode.plane_count
+        if len(self.planes[player_id]) >= max_planes:
+            return False, f"Already placed {max_planes} planes"
         
         # Get plane positions
         head_x = plane_data["head_x"]
@@ -133,10 +134,11 @@ class Game:
         Returns:
             Winner player_id or None
         """
+        max_planes = self.mode.plane_count
         for player_id in ["player1", "player2"]:
-            if len(self.planes[player_id]) == 2:  # Player has placed both planes
+            if len(self.planes[player_id]) == max_planes:  # Player has placed all planes
                 destroyed_count = sum(1 for plane in self.planes[player_id] if plane.is_destroyed)
-                if destroyed_count == 2:
+                if destroyed_count == max_planes:
                     # This player lost, return opponent as winner
                     return "player2" if player_id == "player1" else "player1"
         return None
@@ -159,7 +161,7 @@ class Game:
 
     def mark_player_ready(self, player_id: str):
         """Mark player as ready after placing all planes"""
-        if len(self.planes[player_id]) == 2:
+        if len(self.planes[player_id]) == self.mode.plane_count:
             self.ready[player_id] = True
     
     def are_both_players_ready(self) -> bool:
