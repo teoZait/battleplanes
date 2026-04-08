@@ -345,8 +345,8 @@ class TestGameModeReadyLogic:
     """
 
     def test_mark_ready_respects_mode_plane_count(self):
-        """Ready should require all planes for the mode (2 classic, 3 strategic)."""
-        for mode, count in ((GameMode.CLASSIC, 2), (GameMode.STRATEGIC, 3)):
+        """Ready should require all planes for the mode (2 classic, 3 elite)."""
+        for mode, count in ((GameMode.CLASSIC, 2), (GameMode.ELITE, 3)):
             game = Game(f"ready-{mode.value}", mode=mode)
             planes = [
                 {"head_x": 2, "head_y": 0, "orientation": "up"},

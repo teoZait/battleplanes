@@ -606,11 +606,11 @@ describe('gameReducer - game mode', () => {
       player_id: 'player1',
       game_state: 'placing',
       max_planes: 3,
-      mode: 'strategic',
+      mode: 'elite',
     };
     const state = gameReducer(initialGameState, action);
     expect(state.maxPlanes).toBe(3);
-    expect(state.gameMode).toBe('strategic');
+    expect(state.gameMode).toBe('elite');
   });
 
   it('player_assigned without mode defaults to classic/2', () => {
@@ -625,36 +625,36 @@ describe('gameReducer - game mode', () => {
   });
 
   it('game_continued should reset maxPlanes and gameMode to defaults', () => {
-    const strategicState: GameUIState = {
+    const eliteState: GameUIState = {
       ...baseState,
       maxPlanes: 3,
-      gameMode: 'strategic',
+      gameMode: 'elite',
       planesPlaced: 3,
     };
-    const state = gameReducer(strategicState, { type: 'game_continued', message: 'New game.' });
+    const state = gameReducer(eliteState, { type: 'game_continued', message: 'New game.' });
     expect(state.maxPlanes).toBe(2);
     expect(state.gameMode).toBe('classic');
   });
 
-  it('plane_placed message reflects remaining count for strategic mode', () => {
-    const strategicState: GameUIState = { ...baseState, maxPlanes: 3, gameMode: 'strategic' };
+  it('plane_placed message reflects remaining count for elite mode', () => {
+    const eliteState: GameUIState = { ...baseState, maxPlanes: 3, gameMode: 'elite' };
 
     // 1 of 3 placed → "2 more planes"
-    const s1 = gameReducer(strategicState, {
+    const s1 = gameReducer(eliteState, {
       type: 'plane_placed', success: true, message: 'OK', planes_count: 1,
     } as ServerMessage);
     expect(s1.planesPlaced).toBe(1);
     expect(s1.message).toContain('2 more planes');
 
     // 2 of 3 placed → "1 more plane" (singular)
-    const s2 = gameReducer({ ...strategicState, planesPlaced: 1 }, {
+    const s2 = gameReducer({ ...eliteState, planesPlaced: 1 }, {
       type: 'plane_placed', success: true, message: 'OK', planes_count: 2,
     } as ServerMessage);
     expect(s2.message).toContain('1 more plane');
     expect(s2.message).not.toContain('planes');
 
     // 3 of 3 placed → "Waiting for opponent"
-    const s3 = gameReducer({ ...strategicState, planesPlaced: 2 }, {
+    const s3 = gameReducer({ ...eliteState, planesPlaced: 2 }, {
       type: 'plane_placed', success: true, message: 'OK', planes_count: 3,
     } as ServerMessage);
     expect(s3.planesPlaced).toBe(3);

@@ -202,7 +202,7 @@ class TestCreateGameRequest:
     """Test CreateGameRequest schema validation."""
 
     def test_valid_modes_accepted(self):
-        for mode in ("classic", "strategic"):
+        for mode in ("classic", "elite"):
             req = CreateGameRequest.model_validate({"mode": mode})
             assert req.mode == mode
 

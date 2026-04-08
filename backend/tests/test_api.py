@@ -271,13 +271,13 @@ class TestGameModeAPI:
         data = client.post("/game/create").json()
         assert data["mode"] == "classic"
 
-    def test_create_game_with_strategic_mode(self):
+    def test_create_game_with_elite_mode(self):
         client = self._get_fresh_client()
-        response = client.post("/game/create", json={"mode": "strategic"})
+        response = client.post("/game/create", json={"mode": "elite"})
         assert response.status_code == 200
         data = response.json()
         assert "game_id" in data
-        assert data["mode"] == "strategic"
+        assert data["mode"] == "elite"
 
     def test_create_game_with_invalid_mode_rejected(self):
         client = self._get_fresh_client()
@@ -287,8 +287,8 @@ class TestGameModeAPI:
     def test_get_game_includes_mode(self):
         """Mode should be persisted and returned by GET /game/{id}."""
         client = self._get_fresh_client()
-        game_id = client.post("/game/create", json={"mode": "strategic"}).json()["game_id"]
-        assert client.get(f"/game/{game_id}").json()["mode"] == "strategic"
+        game_id = client.post("/game/create", json={"mode": "elite"}).json()["game_id"]
+        assert client.get(f"/game/{game_id}").json()["mode"] == "elite"
 
 
 class TestClientIPResolution:

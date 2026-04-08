@@ -342,18 +342,18 @@ h1::before {
   border-color: rgba(0, 210, 255, 0.4);
 }
 
-/* ── Strategic: 3 planes, flashy ── */
-.mode-card-strategic .mc-plane-1 {
+/* ── Elite: 3 planes, flashy ── */
+.mode-card-elite .mc-plane-1 {
   left: 16%;
   animation: strat-fly-1 2.2s ease-in-out infinite;
 }
 
-.mode-card-strategic .mc-plane-2 {
+.mode-card-elite .mc-plane-2 {
   left: 48%;
   animation: strat-fly-2 2.2s ease-in-out infinite 0.25s;
 }
 
-.mode-card-strategic .mc-plane-3 {
+.mode-card-elite .mc-plane-3 {
   left: 80%;
   animation: strat-fly-3 2.2s ease-in-out infinite 0.5s;
 }
@@ -374,7 +374,7 @@ h1::before {
   50% { transform: translate(-50%, -50%) translateY(-11px) rotate(-4deg); }
 }
 
-.mode-card-strategic:hover {
+.mode-card-elite:hover {
   border-color: rgba(0, 210, 255, 0.6);
   box-shadow:
     0 14px 40px rgba(0, 0, 0, 0.35),
@@ -382,12 +382,12 @@ h1::before {
     0 0 60px rgba(0, 210, 255, 0.08);
 }
 
-.mode-card-strategic:hover .mc-plane {
+.mode-card-elite:hover .mc-plane {
   filter: drop-shadow(0 0 10px rgba(0, 210, 255, 0.5));
 }
 
-/* Shimmer sweep on strategic hover */
-.mode-card-strategic::after {
+/* Shimmer sweep on elite hover */
+.mode-card-elite::after {
   content: '';
   position: absolute;
   top: 0;
@@ -399,7 +399,7 @@ h1::before {
   pointer-events: none;
 }
 
-.mode-card-strategic:hover::after {
+.mode-card-elite:hover::after {
   animation: shimmer-sweep 1.8s ease-in-out infinite;
 }
 

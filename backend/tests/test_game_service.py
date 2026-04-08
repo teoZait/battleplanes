@@ -946,9 +946,9 @@ class TestGameStateSerialization:
 # Game mode support
 # ---------------------------------------------------------------------------
 
-async def _setup_strategic_playing(service: GameService):
-    """Create strategic-mode game, connect 2 players, place 3 planes each."""
-    game_id = await service.create_game(mode=GameMode.STRATEGIC)
+async def _setup_elite_playing(service: GameService):
+    """Create elite-mode game, connect 2 players, place 3 planes each."""
+    game_id = await service.create_game(mode=GameMode.ELITE)
     ws1, ws2 = await _connect_two(service, game_id)
 
     for pid in ("player1", "player2"):
@@ -968,31 +968,31 @@ class TestGameModeService:
     @pytest.mark.asyncio
     async def test_create_game_with_mode(self, service):
         """Game should store the requested mode and expose it in game_info."""
-        gid = await service.create_game(mode=GameMode.STRATEGIC)
+        gid = await service.create_game(mode=GameMode.ELITE)
         game = await service.get_game(gid)
-        assert game.mode == GameMode.STRATEGIC
+        assert game.mode == GameMode.ELITE
         info = await service.get_game_info(gid)
-        assert info["mode"] == "strategic"
+        assert info["mode"] == "elite"
 
     @pytest.mark.asyncio
     async def test_player_assigned_includes_mode_and_max_planes(self, service):
-        gid = await service.create_game(mode=GameMode.STRATEGIC)
+        gid = await service.create_game(mode=GameMode.ELITE)
         ws = MockWebSocket()
         await service.handle_player_connection(gid, ws)
         msg = ws.find("player_assigned")
-        assert msg["mode"] == "strategic"
+        assert msg["mode"] == "elite"
         assert msg["max_planes"] == 3
 
     @pytest.mark.asyncio
     async def test_game_ready_message_reflects_mode(self, service):
-        gid = await service.create_game(mode=GameMode.STRATEGIC)
+        gid = await service.create_game(mode=GameMode.ELITE)
         ws1, ws2 = await _connect_two(service, gid)
         msg = ws1.find("game_ready")
         assert "3 planes each" in msg["message"]
 
     @pytest.mark.asyncio
-    async def test_strategic_game_needs_3_planes_to_start(self, service):
-        gid = await service.create_game(mode=GameMode.STRATEGIC)
+    async def test_elite_game_needs_3_planes_to_start(self, service):
+        gid = await service.create_game(mode=GameMode.ELITE)
         ws1, ws2 = await _connect_two(service, gid)
 
         # Place 2 planes each — game should NOT start
@@ -1012,10 +1012,10 @@ class TestGameModeService:
 
     @pytest.mark.asyncio
     async def test_continue_preserves_mode(self, service):
-        gid, ws1, ws2 = await _setup_strategic_playing(service)
+        gid, ws1, ws2 = await _setup_elite_playing(service)
         game = await service.get_game(gid)
         token1 = game.session_tokens["player1"]
 
         result = await service.continue_game(gid, token1)
         new_game = await service.get_game(result["game_id"])
-        assert new_game.mode == GameMode.STRATEGIC
+        assert new_game.mode == GameMode.ELITE

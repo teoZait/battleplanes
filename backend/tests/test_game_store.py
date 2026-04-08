@@ -189,23 +189,23 @@ class TestSerialisation:
         assert restored.mode == GameMode.CLASSIC  # backward compat default
 
     def test_mode_round_trip(self):
-        for mode in (GameMode.CLASSIC, GameMode.STRATEGIC):
+        for mode in (GameMode.CLASSIC, GameMode.ELITE):
             game = Game(f"mode-{mode.value}", mode=mode)
             data = GameStore._serialize(game)
             assert data["mode"] == mode.value
             restored = GameStore._deserialize(data)
             assert restored.mode == mode
 
-    def test_strategic_mode_preserves_plane_count(self):
-        """Strategic game with 3 planes should survive round-trip."""
-        game = Game("mode-3planes", mode=GameMode.STRATEGIC)
+    def test_elite_mode_preserves_plane_count(self):
+        """Elite game with 3 planes should survive round-trip."""
+        game = Game("mode-3planes", mode=GameMode.ELITE)
         game.place_plane("player1", PLANE_1_DATA)
         game.place_plane("player1", PLANE_2_DATA)
         game.place_plane("player1", {"head_x": 5, "head_y": 9, "orientation": "down"})
 
         data = GameStore._serialize(game)
         restored = GameStore._deserialize(data)
-        assert restored.mode == GameMode.STRATEGIC
+        assert restored.mode == GameMode.ELITE
         assert len(restored.planes["player1"]) == 3
 
 

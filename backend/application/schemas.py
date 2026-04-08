@@ -65,8 +65,8 @@ class CreateGameRequest(BaseModel):
     @field_validator("mode")
     @classmethod
     def valid_mode(cls, v: str) -> str:
-        if v not in ("classic", "strategic"):
-            raise ValueError(f"Mode must be 'classic' or 'strategic', got '{v}'")
+        if v not in ("classic", "elite"):
+            raise ValueError(f"Mode must be 'classic' or 'elite', got '{v}'")
         return v
 
 

@@ -33,7 +33,7 @@ function App() {
     }
   });
 
-  const createGame = async (mode: 'classic' | 'strategic') => {
+  const createGame = async (mode: 'classic' | 'elite') => {
     const res = await fetch(`${API_URL}/game/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -183,7 +183,7 @@ function App() {
                       <h3>Classic</h3>
                       <p>2 planes per player</p>
                     </button>
-                    <button className="mode-card mode-card-strategic" onClick={() => createGame('strategic')}>
+                    <button className="mode-card mode-card-elite" onClick={() => createGame('elite')}>
                       <div className="mode-card-planes">
                         <svg className="mc-plane mc-plane-1" viewBox="0 0 64 64" fill="none">
                           <path d="M32 4L28 20H12L8 28H26L22 52L28 48V60L32 56L36 60V48L42 52L38 28H56L52 20H36L32 4Z"
@@ -198,7 +198,7 @@ function App() {
                                 fill="currentColor" fillOpacity="0.25" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
                         </svg>
                       </div>
-                      <h3>Strategic</h3>
+                      <h3>Elite</h3>
                       <p>3 planes per player</p>
                     </button>
                   </div>

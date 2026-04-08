@@ -1012,18 +1012,18 @@ class TestGameInfoHardening:
 # Game mode integration tests
 # ---------------------------------------------------------------------------
 
-# Third non-overlapping plane for strategic mode
+# Third non-overlapping plane for elite mode
 PLANE_3 = {"type": "place_plane", "head_x": 5, "head_y": 9, "orientation": "down"}
 PLANE_3_HEAD = (5, 9)
 
 
-def _create_strategic_game(client) -> str:
-    res = client.post("/game/create", json={"mode": "strategic"})
+def _create_elite_game(client) -> str:
+    res = client.post("/game/create", json={"mode": "elite"})
     assert res.status_code == 200
     return res.json()["game_id"]
 
 
-def _place_all_strategic_planes(ws1, ws2):
+def _place_all_elite_planes(ws1, ws2):
     """Both players place 3 planes; consumes all resulting messages including game_started."""
     for ws in (ws1, ws2):
         ws.send_json(PLANE_1)
@@ -1045,11 +1045,11 @@ def _place_all_strategic_planes(ws1, ws2):
     assert s2["type"] == "game_started" and s2["current_turn"] == "player1"
 
 
-class TestStrategicModeFullGame:
+class TestEliteModeFullGame:
 
-    def test_strategic_game_needs_3_planes(self, client):
-        """In strategic mode, game should NOT start until 3 planes are placed."""
-        game_id = _create_strategic_game(client)
+    def test_elite_game_needs_3_planes(self, client):
+        """In elite mode, game should NOT start until 3 planes are placed."""
+        game_id = _create_elite_game(client)
         with _ws_connect(client, game_id) as ws1:
             ws1.receive_json()  # player_assigned
             with _ws_connect(client, game_id) as ws2:
@@ -1078,9 +1078,9 @@ class TestStrategicModeFullGame:
                 assert s1["type"] == "game_started"
                 assert s2["type"] == "game_started"
 
-    def test_strategic_game_win_requires_3_cockpits(self, client):
-        """Player must destroy all 3 cockpits to win in strategic mode."""
-        game_id = _create_strategic_game(client)
+    def test_elite_game_win_requires_3_cockpits(self, client):
+        """Player must destroy all 3 cockpits to win in elite mode."""
+        game_id = _create_elite_game(client)
         with _ws_connect(client, game_id) as ws1:
             ws1.receive_json()  # player_assigned
             with _ws_connect(client, game_id) as ws2:
@@ -1088,7 +1088,7 @@ class TestStrategicModeFullGame:
                 ws1.receive_json()  # game_ready
                 ws2.receive_json()  # game_ready
 
-                _place_all_strategic_planes(ws1, ws2)
+                _place_all_elite_planes(ws1, ws2)
 
                 # P1 destroys P2's 1st cockpit
                 _do_attack(ws1, ws2, *PLANE_1_HEAD)

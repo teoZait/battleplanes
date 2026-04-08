@@ -25,7 +25,7 @@ class PlaneOrientation(str, Enum):
 class GameMode(str, Enum):
     """Represents the game mode (number of planes per player)"""
     CLASSIC = "classic"      # 2 planes per player
-    STRATEGIC = "strategic"  # 3 planes per player
+    ELITE = "elite"  # 3 planes per player
 
     @property
     def plane_count(self) -> int:
