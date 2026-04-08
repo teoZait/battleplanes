@@ -1,4 +1,4 @@
-import { useState, useReducer, useCallback } from 'react';
+import { useState, useReducer, useCallback, useEffect } from 'react';
 import './App.css';
 import GameBoard from './components/GameBoard';
 import PlanePlacement from './components/PlanePlacement';
@@ -20,10 +20,33 @@ interface Plane {
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
+export const getGameIdFromUrl = (): string | null => {
+  const match = window.location.pathname.match(/^\/game\/([^/]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+};
+
 function App() {
-  const [gameId, setGameId] = useState<string | null>(null);
+  const [gameId, setGameId] = useState<string | null>(getGameIdFromUrl);
   const [showModeSelector, setShowModeSelector] = useState(false);
   const [state, dispatch] = useReducer(gameReducer, initialGameState);
+
+  // Sync URL when gameId changes
+  useEffect(() => {
+    const targetPath = gameId ? `/game/${gameId}` : '/';
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState(null, '', targetPath);
+    }
+  }, [gameId]);
+
+  // Handle browser back/forward buttons
+  useEffect(() => {
+    const onPopState = () => {
+      setGameId(getGameIdFromUrl());
+      setShowModeSelector(false);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   const { send, connectionStatus } = useGameWebSocket({
     gameId,
@@ -34,7 +57,7 @@ function App() {
   });
 
   const createGame = async (mode: 'classic' | 'elite') => {
-    const res = await fetch(`${API_URL}/game/create`, {
+    const res = await fetch(`${API_URL}/api/game/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode }),
@@ -100,7 +123,7 @@ function App() {
     const token = localStorage.getItem(`game_token_${gameId}`);
     if (!token) return;
 
-    const res = await fetch(`${API_URL}/game/${gameId}/continue`, {
+    const res = await fetch(`${API_URL}/api/game/${gameId}/continue`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_token: token }),

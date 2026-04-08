@@ -106,7 +106,7 @@ class TestCORSConfiguration:
             client = TestClient(main_module.app)
 
             response = client.options(
-                "/game/create",
+                "/api/game/create",
                 headers={
                     "Origin": "http://localhost:3000",
                     "Access-Control-Request-Method": "POST",
@@ -130,7 +130,7 @@ class TestRateLimiting:
         client, _ = self._get_fresh_client()
 
         for _ in range(5):
-            response = client.post("/game/create")
+            response = client.post("/api/game/create")
             assert response.status_code == 200
 
     def test_rate_limit_returns_429(self):
@@ -139,11 +139,11 @@ class TestRateLimiting:
 
         # Exhaust the limit (30 requests)
         for _ in range(main_module.RATE_LIMIT_MAX_REQUESTS):
-            response = client.post("/game/create")
+            response = client.post("/api/game/create")
             assert response.status_code == 200
 
         # Next request should be rate limited
-        response = client.post("/game/create")
+        response = client.post("/api/game/create")
         assert response.status_code == 429
         assert "Too many requests" in response.json()["detail"]
 
@@ -152,9 +152,9 @@ class TestRateLimiting:
         client, main_module = self._get_fresh_client()
 
         for _ in range(main_module.RATE_LIMIT_MAX_REQUESTS):
-            client.post("/game/create")
+            client.post("/api/game/create")
 
-        response = client.post("/game/create")
+        response = client.post("/api/game/create")
         assert response.json() == {"detail": "Too many requests. Try again later."}
 
     def test_health_check_exempt_from_rate_limit(self):
@@ -163,7 +163,7 @@ class TestRateLimiting:
 
         # Exhaust the rate limit on game creation
         for _ in range(main_module.RATE_LIMIT_MAX_REQUESTS):
-            client.post("/game/create")
+            client.post("/api/game/create")
 
         # Health check should still work
         response = client.get("/")
@@ -176,9 +176,9 @@ class TestRateLimiting:
 
         # Exhaust the limit
         for _ in range(main_module.RATE_LIMIT_MAX_REQUESTS):
-            client.post("/game/create")
+            client.post("/api/game/create")
 
-        response = client.post("/game/create")
+        response = client.post("/api/game/create")
         assert response.status_code == 429
 
         # Fast-forward time past the window
@@ -189,7 +189,7 @@ class TestRateLimiting:
             # The middleware filters timestamps older than window_start
             main_module._rate_limit_store.clear()
 
-            response = client.post("/game/create")
+            response = client.post("/api/game/create")
             assert response.status_code == 200
 
     def test_rate_limit_applies_to_different_endpoints(self):
@@ -198,14 +198,40 @@ class TestRateLimiting:
 
         # Mix of endpoints consuming the same rate limit budget
         for _ in range(main_module.RATE_LIMIT_MAX_REQUESTS // 2):
-            client.post("/game/create")
+            client.post("/api/game/create")
 
         for _ in range(main_module.RATE_LIMIT_MAX_REQUESTS // 2):
-            client.get("/game/nonexistent-id")
+            client.get("/api/game/nonexistent-id")
 
         # Budget exhausted
-        response = client.post("/game/create")
+        response = client.post("/api/game/create")
         assert response.status_code == 429
+
+
+class TestAPIPrefix:
+    """All game endpoints live under /api/ so /game/ is free for the SPA."""
+
+    def _get_fresh_client(self):
+        import importlib
+        import main as main_module
+        importlib.reload(main_module)
+        return TestClient(main_module.app)
+
+    def test_old_game_create_path_returns_404(self):
+        client = self._get_fresh_client()
+        response = client.post("/game/create")
+        assert response.status_code in (404, 405)
+
+    def test_old_game_get_path_returns_404(self):
+        client = self._get_fresh_client()
+        response = client.get("/game/some-id")
+        assert response.status_code in (404, 405)
+
+    def test_api_prefix_required(self):
+        """POST /api/game/create works, POST /game/create does not."""
+        client = self._get_fresh_client()
+        assert client.post("/api/game/create").status_code == 200
+        assert client.post("/game/create").status_code in (404, 405)
 
 
 class TestExistingEndpoints:
@@ -225,33 +251,33 @@ class TestExistingEndpoints:
 
     def test_create_game(self):
         client = self._get_fresh_client()
-        response = client.post("/game/create")
+        response = client.post("/api/game/create")
         assert response.status_code == 200
         assert "game_id" in response.json()
 
     def test_get_nonexistent_game(self):
         client = self._get_fresh_client()
-        response = client.get("/game/nonexistent-id")
+        response = client.get("/api/game/nonexistent-id")
         assert response.status_code == 404
 
     def test_create_and_get_game(self):
         client = self._get_fresh_client()
-        create_response = client.post("/game/create")
+        create_response = client.post("/api/game/create")
         game_id = create_response.json()["game_id"]
 
-        get_response = client.get(f"/game/{game_id}")
+        get_response = client.get(f"/api/game/{game_id}")
         assert get_response.status_code == 200
         data = get_response.json()
         assert data["id"] == game_id
         assert data["state"] == "waiting"
 
     def test_get_game_does_not_expose_player_slots(self):
-        """#18 — GET /game/{id} must not reveal which player slots are open."""
+        """#18 — GET /api/game/{id} must not reveal which player slots are open."""
         client = self._get_fresh_client()
-        create_response = client.post("/game/create")
+        create_response = client.post("/api/game/create")
         game_id = create_response.json()["game_id"]
 
-        get_response = client.get(f"/game/{game_id}")
+        get_response = client.get(f"/api/game/{game_id}")
         data = get_response.json()
         assert "players" not in data
         assert "current_turn" not in data
@@ -268,12 +294,12 @@ class TestGameModeAPI:
 
     def test_create_game_defaults_to_classic(self):
         client = self._get_fresh_client()
-        data = client.post("/game/create").json()
+        data = client.post("/api/game/create").json()
         assert data["mode"] == "classic"
 
     def test_create_game_with_elite_mode(self):
         client = self._get_fresh_client()
-        response = client.post("/game/create", json={"mode": "elite"})
+        response = client.post("/api/game/create", json={"mode": "elite"})
         assert response.status_code == 200
         data = response.json()
         assert "game_id" in data
@@ -281,14 +307,14 @@ class TestGameModeAPI:
 
     def test_create_game_with_invalid_mode_rejected(self):
         client = self._get_fresh_client()
-        response = client.post("/game/create", json={"mode": "invalid"})
+        response = client.post("/api/game/create", json={"mode": "invalid"})
         assert response.status_code == 422
 
     def test_get_game_includes_mode(self):
-        """Mode should be persisted and returned by GET /game/{id}."""
+        """Mode should be persisted and returned by GET /api/game/{id}."""
         client = self._get_fresh_client()
-        game_id = client.post("/game/create", json={"mode": "elite"}).json()["game_id"]
-        assert client.get(f"/game/{game_id}").json()["mode"] == "elite"
+        game_id = client.post("/api/game/create", json={"mode": "elite"}).json()["game_id"]
+        assert client.get(f"/api/game/{game_id}").json()["mode"] == "elite"
 
 
 class TestClientIPResolution:
@@ -306,17 +332,17 @@ class TestClientIPResolution:
 
         # Exhaust limit for IP "10.0.0.1"
         for _ in range(main_module.RATE_LIMIT_MAX_REQUESTS):
-            client.post("/game/create", headers={"X-Forwarded-For": "10.0.0.1"})
+            client.post("/api/game/create", headers={"X-Forwarded-For": "10.0.0.1"})
 
         # 10.0.0.1 is blocked
         response = client.post(
-            "/game/create", headers={"X-Forwarded-For": "10.0.0.1"}
+            "/api/game/create", headers={"X-Forwarded-For": "10.0.0.1"}
         )
         assert response.status_code == 429
 
         # 10.0.0.2 still has its own budget
         response = client.post(
-            "/game/create", headers={"X-Forwarded-For": "10.0.0.2"}
+            "/api/game/create", headers={"X-Forwarded-For": "10.0.0.2"}
         )
         assert response.status_code == 200
 
@@ -327,20 +353,20 @@ class TestClientIPResolution:
         # Exhaust limit for "10.0.0.1"
         for _ in range(main_module.RATE_LIMIT_MAX_REQUESTS):
             client.post(
-                "/game/create",
+                "/api/game/create",
                 headers={"X-Forwarded-For": "10.0.0.1, 192.168.1.1"},
             )
 
         # Same first IP — blocked
         response = client.post(
-            "/game/create",
+            "/api/game/create",
             headers={"X-Forwarded-For": "10.0.0.1, 172.16.0.1"},
         )
         assert response.status_code == 429
 
         # Different first IP — allowed
         response = client.post(
-            "/game/create",
+            "/api/game/create",
             headers={"X-Forwarded-For": "10.0.0.99, 192.168.1.1"},
         )
         assert response.status_code == 200
@@ -350,9 +376,9 @@ class TestClientIPResolution:
         client, main_module = self._get_fresh_client()
 
         for _ in range(main_module.RATE_LIMIT_MAX_REQUESTS):
-            client.post("/game/create")
+            client.post("/api/game/create")
 
-        response = client.post("/game/create")
+        response = client.post("/api/game/create")
         assert response.status_code == 429
 
 
@@ -380,7 +406,7 @@ class TestCORSMethods:
     def test_cors_allows_post(self):
         client = self._get_fresh_client()
         response = client.options(
-            "/game/create",
+            "/api/game/create",
             headers={
                 "Origin": "http://localhost:3000",
                 "Access-Control-Request-Method": "POST",
@@ -392,7 +418,7 @@ class TestCORSMethods:
     def test_cors_blocks_delete(self):
         client = self._get_fresh_client()
         response = client.options(
-            "/game/create",
+            "/api/game/create",
             headers={
                 "Origin": "http://localhost:3000",
                 "Access-Control-Request-Method": "DELETE",
@@ -404,7 +430,7 @@ class TestCORSMethods:
     def test_cors_blocks_put(self):
         client = self._get_fresh_client()
         response = client.options(
-            "/game/create",
+            "/api/game/create",
             headers={
                 "Origin": "http://localhost:3000",
                 "Access-Control-Request-Method": "PUT",

@@ -6,93 +6,30 @@
   gap: 15px;
 }
 
-.game-id-box {
-  background: linear-gradient(135deg, rgba(0, 210, 255, 0.15) 0%, rgba(0, 160, 215, 0.1) 100%);
-  border: 2px solid #00d2ff;
-  border-radius: 12px;
-  padding: 20px 30px;
-  text-align: center;
-  box-shadow: 
-    0 0 25px rgba(0, 210, 255, 0.2),
-    inset 0 0 15px rgba(0, 210, 255, 0.05);
-  backdrop-filter: blur(10px);
-  position: relative;
-}
-
-.game-id-box::before {
-  content: '';
-  position: absolute;
-  top: -2px;
-  left: -2px;
-  right: -2px;
-  bottom: -2px;
-  border-radius: 14px;
-  background: linear-gradient(45deg, transparent 30%, rgba(0, 210, 255, 0.3) 50%, transparent 70%);
-  z-index: -1;
-}
-
-.game-id-content {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.game-id-label {
-  font-size: 1.1rem;
-  font-weight: bold;
-  color: #74d7ff;
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  text-shadow: 0 0 8px rgba(116, 215, 255, 0.4);
-}
-
-.game-id-value {
-  font-size: 1.3rem;
-  font-weight: bold;
-  color: #e0f0ff;
-  background: rgba(0, 30, 69, 0.7);
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-family: 'Courier New', monospace;
-  letter-spacing: 2px;
-  user-select: all;
+.copy-link-btn {
+  background: rgba(0, 210, 255, 0.1);
   border: 1px solid rgba(0, 210, 255, 0.3);
-}
-
-.copy-btn {
-  background: linear-gradient(135deg, #00d2ff 0%, #00a0d7 100%);
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: bold;
-  font-size: 0.9rem;
-  transition: all 0.3s ease;
-  box-shadow: 
-    0 4px 15px rgba(0, 210, 255, 0.3),
-    inset 0 0 10px rgba(255, 255, 255, 0.1);
-}
-
-.copy-btn:hover {
-  transform: translateY(-3px) scale(1.02);
-  box-shadow: 
-    0 8px 25px rgba(0, 210, 255, 0.6),
-    inset 0 0 15px rgba(255, 255, 255, 0.15);
-}
-
-.copy-btn:active {
-  transform: translateY(0) scale(1);
-}
-
-.game-id-hint {
-  margin-top: 10px;
-  font-size: 0.9rem;
   color: #74d7ff;
-  font-style: italic;
-  opacity: 0.8;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  align-self: center;
+  white-space: nowrap;
+}
+
+.copy-link-btn:hover {
+  background: rgba(0, 210, 255, 0.2);
+  border-color: rgba(0, 210, 255, 0.5);
+  color: #e0f0ff;
+}
+
+.copy-link-btn.copied {
+  background: rgba(50, 205, 50, 0.15);
+  border-color: rgba(50, 205, 50, 0.4);
+  color: #32cd32;
 }
 
 .info-card {
@@ -270,47 +207,12 @@
   .message-box p {
     font-size: 0.9rem;
   }
-
-  .game-id-box {
-    padding: 15px 20px;
-    max-width: 90%;
-  }
-
-  .game-id-content {
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .game-id-value {
-    font-size: 1rem;
-    padding: 8px 15px;
-    word-break: break-all;
-  }
-
-  .copy-btn {
-    width: 100%;
-    padding: 14px 20px;
-  }
 }
 
 /* Small phone screens */
 @media (max-width: 480px) {
   .game-info {
     gap: 10px;
-  }
-
-  .game-id-box {
-    padding: 12px 15px;
-    max-width: 100%;
-  }
-
-  .game-id-label {
-    font-size: 0.9rem;
-  }
-
-  .game-id-value {
-    font-size: 0.85rem;
-    padding: 8px 10px;
   }
 
   .info-card {

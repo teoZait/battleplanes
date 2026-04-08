@@ -4,6 +4,8 @@ A real-time multiplayer strategy game where two players place planes on a grid a
 
 > Think Battleship, but with planes. Hit the cockpit to destroy it. Body shots don't count.
 
+**[Play now at battleplanes.io](https://battleplanes.io)**
+
 ---
 
 ## Table of Contents
@@ -36,13 +38,20 @@ Each plane is a 10-cell cross pattern with a **cockpit** (head) and **body**:
 
 Planes can be rotated in 4 orientations: UP, RIGHT, DOWN, LEFT.
 
+### Game Modes
+
+| Mode        | Planes per player | Win condition              |
+|-------------|-------------------|----------------------------|
+| **Classic** | 2                 | Destroy both cockpits      |
+| **Elite**   | 3                 | Destroy all three cockpits |
+
 ### How to Win
 
 | Phase     | What happens                                                     |
 |-----------|------------------------------------------------------------------|
-| Setup     | Each player places **2 planes** on their 10x10 grid             |
+| Setup     | Each player places their planes on a 10x10 grid                 |
 | Battle    | Players alternate turns, clicking cells on the opponent's board  |
-| Victory   | First player to destroy **both** enemy cockpits wins             |
+| Victory   | First player to destroy **all** enemy cockpits wins              |
 
 ### Hit Types
 
@@ -70,30 +79,39 @@ Planes can be rotated in 4 orientations: UP, RIGHT, DOWN, LEFT.
 ## Architecture
 
 ```
-                       ┌────────────┐
-                       │   Nginx    │ :80 / :443
-                       │  (reverse  │  TLS termination
-                       │   proxy)   │  security headers
-                       └─────┬──────┘
-                             │
-              ┌──────────────┴──────────────┐
-              │                             │
-     HTTP / WS upgrade               Static assets
-              │                       (React SPA)
-              v
-      ┌───────────────┐
-      │   FastAPI      │ :8000
-      │   Backend      │  REST + WebSocket
-      │                │  rate limiting
-      │                │  session auth
-      └───────┬───────┘
-              │
-              v
-      ┌───────────────┐
-      │    Redis 7     │ :6379
-      │   (async)      │  game state
-      │                │  password auth
-      └───────────────┘
+      ┌───────────────────────────┐
+      │     React 18 + TypeScript  │
+      │   SPA with client routing  │
+      │   WebSocket reconnection   │
+      └────────────┬──────────────┘
+                   │
+                   v
+              ┌────────────┐
+              │   Nginx    │ :80 / :443
+              │  (reverse  │  TLS termination
+              │   proxy)   │  security headers
+              └─────┬──────┘
+                    │
+         ┌──────────┼──────────┐
+         │          │          │
+    /api/*      /ws/*     everything else
+         │     WebSocket   try_files → index.html
+         │      upgrade
+         │          │
+         v          v
+      ┌───────────────────────────┐
+      │       FastAPI Backend      │ :8000
+      │   REST API + WebSocket     │
+      │   rate limiting, CORS      │
+      │   session-token auth       │
+      └────────────┬──────────────┘
+                   │
+                   v
+      ┌───────────────────────────┐
+      │         Redis 7            │ :6379
+      │   game state (JSON + TTL)  │
+      │   password auth            │
+      └───────────────────────────┘
 ```
 
 The backend follows **Clean Architecture** with three layers:
@@ -137,12 +155,13 @@ Then open [http://localhost](http://localhost) in your browser.
 
 ### Play
 
-1. Open the app and click **Create New Game**
-2. Copy the Game ID and share it with your opponent
-3. Both players place **2 planes** on the board (click to place, rotate to change orientation)
-4. Click **Confirm Placement** when ready
-5. Take turns attacking the opponent's grid
-6. Destroy both enemy cockpits to win
+1. Open the app and click **Create Game**
+2. Choose a mode — **Classic** (2 planes) or **Elite** (3 planes)
+3. Share the game link with your opponent
+4. Both players place their planes on the board (click to place, rotate to change orientation)
+5. Click **Confirm Placement** when ready
+6. Take turns attacking the opponent's grid
+7. Destroy all enemy cockpits to win
 
 ---
 
@@ -224,15 +243,23 @@ battleplanes/
 
 ### REST Endpoints
 
-| Method | Path              | Description                 |
-|--------|-------------------|-----------------------------|
-| GET    | `/`               | Health check                |
-| POST   | `/game/create`    | Create a new game           |
-| GET    | `/game/{game_id}` | Get game info (id + state)  |
+| Method | Path                          | Description                        |
+|--------|-------------------------------|------------------------------------|
+| GET    | `/`                           | Health check                       |
+| POST   | `/api/game/create`            | Create a new game (`{mode}` body)  |
+| GET    | `/api/game/{game_id}`         | Get game info (id, state, mode)    |
+| POST   | `/api/game/{game_id}/continue`| Continue in a new game             |
+
+### Frontend Routes
+
+| Path            | Description                    |
+|-----------------|--------------------------------|
+| `/`             | Landing page (create or join)  |
+| `/game/{id}`    | Game view (auto-joins via URL) |
 
 ### WebSocket
 
-Connect to `ws://HOST/ws/{game_id}` (optionally with `?token=SESSION_TOKEN` for reconnection).
+Connect to `ws://HOST/ws/{game_id}`. Auth is sent as the first frame (`{type: "auth", token: "..."}`).
 
 #### Client Messages
 
@@ -267,7 +294,7 @@ Connect to `ws://HOST/ws/{game_id}` (optionally with `?token=SESSION_TOKEN` for 
 | `REDIS_URL`            | `redis://localhost:6379/0`       | Redis connection string               |
 | `REDIS_PASSWORD`       | `changeme`                       | Redis auth password                   |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost,https://localhost` | Comma-separated allowed origins    |
-| `VITE_API_URL`         | `http://localhost:8000`          | Backend URL (frontend build-time)     |
+| `VITE_API_URL`         | *(empty — same origin)*         | Backend URL (frontend build-time)     |
 
 ---
 

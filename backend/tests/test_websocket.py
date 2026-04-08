@@ -59,7 +59,7 @@ def playing_game(two_player_game):
 # ---------------------------------------------------------------------------
 
 def _create_game(client) -> str:
-    res = client.post("/game/create")
+    res = client.post("/api/game/create")
     assert res.status_code == 200
     return res.json()["game_id"]
 
@@ -882,7 +882,7 @@ class TestSessionExpiredNotification:
 class TestContinueGameEndpoint:
 
     def test_creates_continuation_game(self, client):
-        """POST /game/{id}/continue should return a new game ID and token."""
+        """POST /api/game/{id}/continue should return a new game ID and token."""
         game_id = _create_game(client)
         with contextlib.ExitStack() as stack:
             ws1 = stack.enter_context(_ws_connect(client, game_id))
@@ -897,7 +897,7 @@ class TestContinueGameEndpoint:
             _place_all_planes(ws1, ws2)
 
         res = client.post(
-            f"/game/{game_id}/continue",
+            f"/api/game/{game_id}/continue",
             json={"session_token": token1},
         )
         assert res.status_code == 200
@@ -928,7 +928,7 @@ class TestContinueGameEndpoint:
 
         # Create continuation
         res = client.post(
-            f"/game/{game_id}/continue",
+            f"/api/game/{game_id}/continue",
             json={"session_token": token1},
         )
         data = res.json()
@@ -963,7 +963,7 @@ class TestContinueGameEndpoint:
             _place_all_planes(ws1, ws2)
 
         res = client.post(
-            f"/game/{game_id}/continue",
+            f"/api/game/{game_id}/continue",
             json={"session_token": token1},
         )
         data = res.json()
@@ -977,14 +977,14 @@ class TestContinueGameEndpoint:
     def test_rejects_invalid_token(self, client):
         game_id = _create_game(client)
         res = client.post(
-            f"/game/{game_id}/continue",
+            f"/api/game/{game_id}/continue",
             json={"session_token": "bad-token"},
         )
         assert res.status_code == 400
 
     def test_rejects_nonexistent_game(self, client):
         res = client.post(
-            "/game/no-such-game/continue",
+            "/api/game/no-such-game/continue",
             json={"session_token": "any"},
         )
         assert res.status_code == 400
@@ -997,14 +997,14 @@ class TestContinueGameEndpoint:
 class TestGameInfoHardening:
 
     def test_get_game_only_returns_id_and_state(self, client):
-        """GET /game/{id} must not reveal player slots or current turn."""
+        """GET /api/game/{id} must not reveal player slots or current turn."""
         game_id = _create_game(client)
-        response = client.get(f"/game/{game_id}")
+        response = client.get(f"/api/game/{game_id}")
         data = response.json()
         assert set(data.keys()) == {"id", "state", "mode"}
 
     def test_get_game_nonexistent_returns_404(self, client):
-        response = client.get("/game/nonexistent-id")
+        response = client.get("/api/game/nonexistent-id")
         assert response.status_code == 404
 
 
@@ -1018,7 +1018,7 @@ PLANE_3_HEAD = (5, 9)
 
 
 def _create_elite_game(client) -> str:
-    res = client.post("/game/create", json={"mode": "elite"})
+    res = client.post("/api/game/create", json={"mode": "elite"})
     assert res.status_code == 200
     return res.json()["game_id"]
 

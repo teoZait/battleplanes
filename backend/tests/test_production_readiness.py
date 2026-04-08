@@ -118,7 +118,7 @@ class TestAuthExceptionHandling:
         importlib.reload(main_module)
         client = TestClient(main_module.app)
 
-        game_id = client.post("/game/create").json()["game_id"]
+        game_id = client.post("/api/game/create").json()["game_id"]
         with pytest.raises(Exception):
             with client.websocket_connect(f"/ws/{game_id}") as ws:
                 # Valid JSON but fails AuthMessage validation (missing 'type' field)
@@ -135,7 +135,7 @@ class TestAuthExceptionHandling:
         importlib.reload(main_module)
         client = TestClient(main_module.app)
 
-        game_id = client.post("/game/create").json()["game_id"]
+        game_id = client.post("/api/game/create").json()["game_id"]
         with pytest.raises(Exception):
             with client.websocket_connect(f"/ws/{game_id}") as ws:
                 # Send garbage text (not JSON)
