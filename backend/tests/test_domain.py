@@ -1,6 +1,6 @@
 import pytest
 from domain.game_logic import get_plane_positions
-from domain.value_objects import PlaneOrientation
+from domain.value_objects import PlaneOrientation, GameMode
 from domain.models import Game
 
 
@@ -335,6 +335,30 @@ class TestBoardMasking:
         assert masked[2][5] == "head_hit", "Head hit should be visible"
         assert masked[4][5] == "hit", "Body hit should be visible"
         assert masked[0][0] == "miss", "Miss should be visible"
+
+
+class TestGameModeReadyLogic:
+    """Test that mark_player_ready respects mode plane count.
+
+    Placement limits and win conditions are covered by service/websocket tests;
+    this tests the intermediate ready-state logic that only the domain owns.
+    """
+
+    def test_mark_ready_respects_mode_plane_count(self):
+        """Ready should require all planes for the mode (2 classic, 3 strategic)."""
+        for mode, count in ((GameMode.CLASSIC, 2), (GameMode.STRATEGIC, 3)):
+            game = Game(f"ready-{mode.value}", mode=mode)
+            planes = [
+                {"head_x": 2, "head_y": 0, "orientation": "up"},
+                {"head_x": 7, "head_y": 0, "orientation": "up"},
+                {"head_x": 5, "head_y": 9, "orientation": "down"},
+            ]
+            for i in range(count):
+                game.place_plane("player1", planes[i])
+                game.mark_player_ready("player1")
+                if i < count - 1:
+                    assert game.ready["player1"] is False
+            assert game.ready["player1"] is True
 
 
 if __name__ == "__main__":

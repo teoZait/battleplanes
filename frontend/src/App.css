@@ -217,6 +217,215 @@ h1::before {
   padding: 16px;
 }
 
+/* ── Mode picker (post-click) ── */
+
+.mode-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  animation: mode-picker-enter 0.45s ease-out;
+}
+
+@keyframes mode-picker-enter {
+  0% { opacity: 0; transform: translateY(16px) scale(0.97); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.mode-picker-title {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  color: #4a8db5;
+  font-weight: 600;
+  margin: 0;
+}
+
+.mode-cards {
+  display: flex;
+  gap: 14px;
+  width: 100%;
+}
+
+.mode-card {
+  flex: 1;
+  background: rgba(0, 30, 69, 0.4);
+  border: 1px solid rgba(0, 210, 255, 0.12);
+  border-radius: 16px;
+  padding: 20px 14px 22px;
+  cursor: pointer;
+  transition: all 0.35s ease;
+  position: relative;
+  overflow: hidden;
+  text-align: center;
+  font-family: inherit;
+  animation: card-enter 0.5s ease-out both;
+}
+
+.mode-card:nth-child(2) {
+  animation-delay: 0.08s;
+}
+
+@keyframes card-enter {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.mode-card:hover {
+  border-color: rgba(0, 210, 255, 0.35);
+  background: rgba(0, 30, 69, 0.6);
+  transform: translateY(-5px);
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.35),
+    0 0 20px rgba(0, 210, 255, 0.12);
+}
+
+.mode-card h3 {
+  font-size: 1.05rem;
+  color: #e0f0ff;
+  font-weight: 700;
+  margin: 0 0 4px;
+  letter-spacing: 1px;
+}
+
+.mode-card p {
+  font-size: 0.8rem;
+  color: #5d8faa;
+  margin: 0;
+}
+
+/* Plane container in cards */
+.mode-card-planes {
+  height: 56px;
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.mc-plane {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  color: #00d2ff;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  filter: drop-shadow(0 0 6px rgba(0, 210, 255, 0.3));
+  top: 50%;
+}
+
+.mode-card:hover .mc-plane {
+  opacity: 1;
+}
+
+/* ── Classic: 2 planes, gentle float ── */
+.mode-card-classic .mc-plane-1 {
+  left: 28%;
+  animation: classic-fly-1 3s ease-in-out infinite;
+}
+
+.mode-card-classic .mc-plane-2 {
+  left: 62%;
+  animation: classic-fly-2 3s ease-in-out infinite 0.6s;
+}
+
+@keyframes classic-fly-1 {
+  0%, 100% { transform: translate(-50%, -50%) translateY(0); }
+  50% { transform: translate(-50%, -50%) translateY(-7px); }
+}
+
+@keyframes classic-fly-2 {
+  0%, 100% { transform: translate(-50%, -50%) translateY(0); }
+  50% { transform: translate(-50%, -50%) translateY(-9px); }
+}
+
+.mode-card-classic:hover {
+  border-color: rgba(0, 210, 255, 0.4);
+}
+
+/* ── Strategic: 3 planes, flashy ── */
+.mode-card-strategic .mc-plane-1 {
+  left: 16%;
+  animation: strat-fly-1 2.2s ease-in-out infinite;
+}
+
+.mode-card-strategic .mc-plane-2 {
+  left: 48%;
+  animation: strat-fly-2 2.2s ease-in-out infinite 0.25s;
+}
+
+.mode-card-strategic .mc-plane-3 {
+  left: 80%;
+  animation: strat-fly-3 2.2s ease-in-out infinite 0.5s;
+}
+
+@keyframes strat-fly-1 {
+  0%, 100% { transform: translate(-50%, -50%) translateY(0) rotate(-4deg); }
+  50% { transform: translate(-50%, -50%) translateY(-11px) rotate(4deg); }
+}
+
+@keyframes strat-fly-2 {
+  0%, 100% { transform: translate(-50%, -50%) translateY(0); }
+  30% { transform: translate(-50%, -50%) translateY(-13px); }
+  70% { transform: translate(-50%, -50%) translateY(3px); }
+}
+
+@keyframes strat-fly-3 {
+  0%, 100% { transform: translate(-50%, -50%) translateY(0) rotate(4deg); }
+  50% { transform: translate(-50%, -50%) translateY(-11px) rotate(-4deg); }
+}
+
+.mode-card-strategic:hover {
+  border-color: rgba(0, 210, 255, 0.6);
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.35),
+    0 0 30px rgba(0, 210, 255, 0.2),
+    0 0 60px rgba(0, 210, 255, 0.08);
+}
+
+.mode-card-strategic:hover .mc-plane {
+  filter: drop-shadow(0 0 10px rgba(0, 210, 255, 0.5));
+}
+
+/* Shimmer sweep on strategic hover */
+.mode-card-strategic::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(0, 210, 255, 0.07), transparent);
+  transition: none;
+  pointer-events: none;
+}
+
+.mode-card-strategic:hover::after {
+  animation: shimmer-sweep 1.8s ease-in-out infinite;
+}
+
+@keyframes shimmer-sweep {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+/* Back button */
+.btn-back {
+  background: none;
+  border: none;
+  color: #4a8db5;
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 6px 14px;
+  transition: color 0.2s ease;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-family: inherit;
+}
+
+.btn-back:hover {
+  color: #00d2ff;
+}
+
 .btn::before {
   content: '';
   position: absolute;

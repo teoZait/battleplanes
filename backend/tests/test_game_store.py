@@ -10,7 +10,7 @@ import json
 import pytest
 
 from domain.models import Game, Plane
-from domain.value_objects import GameState, PlaneOrientation
+from domain.value_objects import GameState, GameMode, PlaneOrientation
 from infrastructure.game_store import GameStore
 from application.game_service import GameService
 
@@ -179,13 +179,34 @@ class TestSerialisation:
             "state": "waiting",
             "current_turn": "player1",
             "ready": {"player1": False, "player2": False},
-            # no session_tokens, created_at, finished_at
+            # no session_tokens, created_at, finished_at, mode
         }
         restored = GameStore._deserialize(data)
         assert restored.id == "old-game"
         assert restored.session_tokens == {"player1": None, "player2": None}
         assert isinstance(restored.created_at, float)
         assert restored.finished_at is None
+        assert restored.mode == GameMode.CLASSIC  # backward compat default
+
+    def test_mode_round_trip(self):
+        for mode in (GameMode.CLASSIC, GameMode.STRATEGIC):
+            game = Game(f"mode-{mode.value}", mode=mode)
+            data = GameStore._serialize(game)
+            assert data["mode"] == mode.value
+            restored = GameStore._deserialize(data)
+            assert restored.mode == mode
+
+    def test_strategic_mode_preserves_plane_count(self):
+        """Strategic game with 3 planes should survive round-trip."""
+        game = Game("mode-3planes", mode=GameMode.STRATEGIC)
+        game.place_plane("player1", PLANE_1_DATA)
+        game.place_plane("player1", PLANE_2_DATA)
+        game.place_plane("player1", {"head_x": 5, "head_y": 9, "orientation": "down"})
+
+        data = GameStore._serialize(game)
+        restored = GameStore._deserialize(data)
+        assert restored.mode == GameMode.STRATEGIC
+        assert len(restored.planes["player1"]) == 3
 
 
 # ---------------------------------------------------------------------------

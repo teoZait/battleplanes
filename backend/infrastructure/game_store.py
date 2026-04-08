@@ -13,7 +13,7 @@ from typing import Dict, Optional
 import redis.asyncio as aioredis
 
 from domain.models import Game, Plane
-from domain.value_objects import GameState
+from domain.value_objects import GameState, GameMode
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +107,7 @@ class GameStore:
     def _serialize(game: Game) -> dict:
         return {
             "id": game.id,
+            "mode": game.mode.value,
             "boards": game.boards,
             "planes": {
                 pid: [p.model_dump(mode="json") for p in planes]
@@ -122,7 +123,7 @@ class GameStore:
 
     @staticmethod
     def _deserialize(data: dict) -> Game:
-        game = Game(data["id"])
+        game = Game(data["id"], mode=GameMode(data.get("mode", "classic")))
         game.boards = data["boards"]
         game.planes = {
             pid: [Plane(**p) for p in planes]

@@ -10,7 +10,7 @@ import time
 from typing import Dict, Optional
 import uuid
 from domain.models import Game
-from domain.value_objects import GameState
+from domain.value_objects import GameState, GameMode
 from infrastructure.connection_manager import ConnectionManager
 from infrastructure.game_store import GameStore
 
@@ -84,10 +84,10 @@ class GameService:
         if game_id in self.games:
             await self._game_store.save(self.games[game_id])
 
-    async def create_game(self) -> str:
+    async def create_game(self, mode: GameMode = GameMode.CLASSIC) -> str:
         """Create a new game and return its ID"""
         game_id = str(uuid.uuid4())
-        self.games[game_id] = Game(game_id)
+        self.games[game_id] = Game(game_id, mode=mode)
         await self._persist(game_id)
         return game_id
     
@@ -115,6 +115,7 @@ class GameService:
         return {
             "id": game.id,
             "state": game.state.value,
+            "mode": game.mode.value,
         }
     
     async def handle_player_connection(
@@ -178,6 +179,8 @@ class GameService:
                 "player_id": player_id,
                 "game_state": game.state.value,
                 "session_token": game.session_tokens[player_id],
+                "mode": game.mode.value,
+                "max_planes": game.mode.plane_count,
             })
 
             # Send board state so the client can resume
@@ -208,7 +211,7 @@ class GameService:
             if game.state == GameState.PLACING:
                 await self.connection_manager.broadcast_to_game(game_id, {
                     "type": "game_ready",
-                    "message": "Both players connected. Place your planes! (2 planes each)"
+                    "message": f"Both players connected. Place your planes! ({game.mode.plane_count} planes each)"
                 })
 
             # Notify opponent that this player has (re)connected.
@@ -247,8 +250,8 @@ class GameService:
             "planes_count": len(game.planes[player_id])
         })
         
-        # Check if player is ready (placed both planes)
-        if len(game.planes[player_id]) == 2:
+        # Check if player is ready (placed all planes)
+        if len(game.planes[player_id]) == game.mode.plane_count:
             game.mark_player_ready(player_id)
             
             # Check if both players are ready
@@ -390,8 +393,8 @@ class GameService:
 
         opponent = "player2" if requesting_player == "player1" else "player1"
 
-        # Clone game state into a new game
-        new_game = Game(str(uuid.uuid4()))
+        # Clone game state into a new game (preserve mode)
+        new_game = Game(str(uuid.uuid4()), mode=game.mode)
         new_game.boards = copy.deepcopy(game.boards)
         new_game.planes = copy.deepcopy(game.planes)
         new_game.current_turn = game.current_turn

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 export type CellStatus = 'empty' | 'plane' | 'head' | 'hit' | 'miss' | 'head_hit';
 
 export type ServerMessage =
-  | { type: 'player_assigned'; player_id: string; game_state: 'waiting' | 'placing' | 'playing' | 'finished'; session_token?: string }
+  | { type: 'player_assigned'; player_id: string; game_state: 'waiting' | 'placing' | 'playing' | 'finished'; session_token?: string; mode?: string; max_planes?: number }
   | { type: 'game_ready'; message: string }
   | { type: 'plane_placed'; success: boolean; message: string; planes_count: number }
   | { type: 'game_started'; current_turn: string }

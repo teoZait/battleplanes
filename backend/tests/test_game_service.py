@@ -7,7 +7,7 @@ without going through HTTP/ASGI.
 import asyncio
 import pytest
 from application.game_service import GameService
-from domain.value_objects import GameState
+from domain.value_objects import GameState, GameMode
 
 
 # ---------------------------------------------------------------------------
@@ -48,6 +48,7 @@ class MockWebSocket:
 
 PLANE_1 = {"head_x": 2, "head_y": 0, "orientation": "up", "type": "place_plane"}
 PLANE_2 = {"head_x": 7, "head_y": 0, "orientation": "up", "type": "place_plane"}
+PLANE_3 = {"head_x": 5, "head_y": 9, "orientation": "down", "type": "place_plane"}
 
 # NOTE: the `service` fixture is provided by conftest.py (FakeRedis-backed)
 
@@ -939,3 +940,82 @@ class TestGameStateSerialization:
         msg = ws2.find("player_assigned")
         assert msg["game_state"] == "placing"
         assert type(msg["game_state"]) is str
+
+
+# ---------------------------------------------------------------------------
+# Game mode support
+# ---------------------------------------------------------------------------
+
+async def _setup_strategic_playing(service: GameService):
+    """Create strategic-mode game, connect 2 players, place 3 planes each."""
+    game_id = await service.create_game(mode=GameMode.STRATEGIC)
+    ws1, ws2 = await _connect_two(service, game_id)
+
+    for pid in ("player1", "player2"):
+        await service.handle_plane_placement(game_id, pid, PLANE_1)
+        await service.handle_plane_placement(game_id, pid, PLANE_2)
+        await service.handle_plane_placement(game_id, pid, PLANE_3)
+
+    game = await service.get_game(game_id)
+    assert game.state == "playing"
+    ws1.clear()
+    ws2.clear()
+    return game_id, ws1, ws2
+
+
+class TestGameModeService:
+
+    @pytest.mark.asyncio
+    async def test_create_game_with_mode(self, service):
+        """Game should store the requested mode and expose it in game_info."""
+        gid = await service.create_game(mode=GameMode.STRATEGIC)
+        game = await service.get_game(gid)
+        assert game.mode == GameMode.STRATEGIC
+        info = await service.get_game_info(gid)
+        assert info["mode"] == "strategic"
+
+    @pytest.mark.asyncio
+    async def test_player_assigned_includes_mode_and_max_planes(self, service):
+        gid = await service.create_game(mode=GameMode.STRATEGIC)
+        ws = MockWebSocket()
+        await service.handle_player_connection(gid, ws)
+        msg = ws.find("player_assigned")
+        assert msg["mode"] == "strategic"
+        assert msg["max_planes"] == 3
+
+    @pytest.mark.asyncio
+    async def test_game_ready_message_reflects_mode(self, service):
+        gid = await service.create_game(mode=GameMode.STRATEGIC)
+        ws1, ws2 = await _connect_two(service, gid)
+        msg = ws1.find("game_ready")
+        assert "3 planes each" in msg["message"]
+
+    @pytest.mark.asyncio
+    async def test_strategic_game_needs_3_planes_to_start(self, service):
+        gid = await service.create_game(mode=GameMode.STRATEGIC)
+        ws1, ws2 = await _connect_two(service, gid)
+
+        # Place 2 planes each — game should NOT start
+        for pid in ("player1", "player2"):
+            await service.handle_plane_placement(gid, pid, PLANE_1)
+            await service.handle_plane_placement(gid, pid, PLANE_2)
+
+        game = await service.get_game(gid)
+        assert game.state == GameState.PLACING  # still placing
+
+        # Place 3rd plane each — game should start
+        for pid in ("player1", "player2"):
+            await service.handle_plane_placement(gid, pid, PLANE_3)
+
+        game = await service.get_game(gid)
+        assert game.state == GameState.PLAYING
+
+    @pytest.mark.asyncio
+    async def test_continue_preserves_mode(self, service):
+        gid, ws1, ws2 = await _setup_strategic_playing(service)
+        game = await service.get_game(gid)
+        token1 = game.session_tokens["player1"]
+
+        result = await service.continue_game(gid, token1)
+        new_game = await service.get_game(result["game_id"])
+        assert new_game.mode == GameMode.STRATEGIC

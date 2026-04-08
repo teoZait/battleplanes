@@ -11,11 +11,12 @@ interface Plane {
 interface PlanePlacementProps {
   onPlanesPlaced: (planes: Plane[]) => void;
   disabled?: boolean;
+  maxPlanes?: number;
 }
 
 type CellStatus = 'empty' | 'plane' | 'head' | 'hover' | 'invalid';
 
-const PlanePlacement = ({ onPlanesPlaced, disabled }: PlanePlacementProps) => {
+const PlanePlacement = ({ onPlanesPlaced, disabled, maxPlanes = 2 }: PlanePlacementProps) => {
   const [board, setBoard] = useState<CellStatus[][]>(
     Array(10).fill(null).map(() => Array(10).fill('empty'))
   );
@@ -46,7 +47,7 @@ const PlanePlacement = ({ onPlanesPlaced, disabled }: PlanePlacementProps) => {
   };
 
   const handleCellClick = (x: number, y: number) => {
-    if (disabled || placedPlanes.length >= 2) return;
+    if (disabled || placedPlanes.length >= maxPlanes) return;
 
     // Compute positions directly (works for both mouse and touch paths)
     const { positions } = getPlanePositions(x, y, orientation);
@@ -82,7 +83,7 @@ const PlanePlacement = ({ onPlanesPlaced, disabled }: PlanePlacementProps) => {
   };
 
   const handleCellTouch = (x: number, y: number) => {
-    if (disabled || placedPlanes.length >= 2) return;
+    if (disabled || placedPlanes.length >= maxPlanes) return;
 
     // Second tap on same cell: place the plane
     if (touchPreviewPos?.x === x && touchPreviewPos?.y === y) {
@@ -96,7 +97,7 @@ const PlanePlacement = ({ onPlanesPlaced, disabled }: PlanePlacementProps) => {
   };
 
   const handleConfirm = () => {
-    if (!disabled && placedPlanes.length === 2) {
+    if (!disabled && placedPlanes.length === maxPlanes) {
       onPlanesPlaced(placedPlanes);
     }
   };
@@ -126,7 +127,7 @@ const PlanePlacement = ({ onPlanesPlaced, disabled }: PlanePlacementProps) => {
     <div className="plane-placement">
       <div className="placement-info">
         <h2>Place Your Planes</h2>
-        <p>Place {2 - placedPlanes.length} more plane{placedPlanes.length === 1 ? '' : 's'}</p>
+        <p>Place {maxPlanes - placedPlanes.length} more plane{maxPlanes - placedPlanes.length === 1 ? '' : 's'}</p>
         <p className="instruction">Tap or hover the head position to preview, then tap again to place</p>
         <button
           onClick={rotateOrientation}
@@ -191,12 +192,11 @@ const PlanePlacement = ({ onPlanesPlaced, disabled }: PlanePlacementProps) => {
       <div className="plane-list">
         <h3>Planes to Place:</h3>
         <ul>
-          <li className={placedPlanes.length > 0 ? 'placed' : placedPlanes.length === 0 ? 'current' : ''}>
-            Plane 1 {placedPlanes.length > 0 && '✓'}
-          </li>
-          <li className={placedPlanes.length === 2 ? 'placed' : placedPlanes.length === 1 ? 'current' : ''}>
-            Plane 2 {placedPlanes.length === 2 && '✓'}
-          </li>
+          {Array.from({ length: maxPlanes }, (_, i) => (
+            <li key={i} className={placedPlanes.length > i ? 'placed' : placedPlanes.length === i ? 'current' : ''}>
+              Plane {i + 1} {placedPlanes.length > i && '✓'}
+            </li>
+          ))}
         </ul>
         <div className="plane-info">
           <p>💡 Tip: Hit the cockpit to destroy a plane!</p>
@@ -207,7 +207,7 @@ const PlanePlacement = ({ onPlanesPlaced, disabled }: PlanePlacementProps) => {
         <button onClick={handleReset} className="btn btn-secondary">
           Reset
         </button>
-        {placedPlanes.length === 2 && (
+        {placedPlanes.length === maxPlanes && (
           <button onClick={handleConfirm} className="btn btn-primary" disabled={disabled}>
             Confirm Placement
           </button>

@@ -22,6 +22,7 @@ const API_URL = import.meta.env.VITE_API_URL || '';
 
 function App() {
   const [gameId, setGameId] = useState<string | null>(null);
+  const [showModeSelector, setShowModeSelector] = useState(false);
   const [state, dispatch] = useReducer(gameReducer, initialGameState);
 
   const { send, connectionStatus } = useGameWebSocket({
@@ -32,8 +33,12 @@ function App() {
     }
   });
 
-  const createGame = async () => {
-    const res = await fetch(`${API_URL}/game/create`, { method: 'POST' });
+  const createGame = async (mode: 'classic' | 'strategic') => {
+    const res = await fetch(`${API_URL}/game/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
+    });
     const data = await res.json();
     setGameId(data.game_id);
   };
@@ -127,36 +132,81 @@ function App() {
             <p className="hero-tagline">Outsmart. Outmaneuver. Dominate the skies.</p>
 
             <div className="hero-actions">
-              <button onClick={createGame} className="btn btn-primary">
-                Create Game
-              </button>
+              {!showModeSelector ? (
+                <>
+                  <button onClick={() => setShowModeSelector(true)} className="btn btn-primary">
+                    Create Game
+                  </button>
 
-              <div className="divider-text"><span>or</span></div>
+                  <div className="divider-text"><span>or</span></div>
 
-              <div className="join-game">
-                <input
-                  type="text"
-                  placeholder="Enter Game ID"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      joinGame((e.target as HTMLInputElement).value);
-                    }
-                  }}
-                />
-                <button
-                  onClick={() => {
-                    const input = document.querySelector(
-                      '.join-game input'
-                    ) as HTMLInputElement;
-                    if (input?.value) {
-                      joinGame(input.value);
-                    }
-                  }}
-                  className="btn btn-secondary"
-                >
-                  Join
-                </button>
-              </div>
+                  <div className="join-game">
+                    <input
+                      type="text"
+                      placeholder="Enter Game ID"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          joinGame((e.target as HTMLInputElement).value);
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        const input = document.querySelector(
+                          '.join-game input'
+                        ) as HTMLInputElement;
+                        if (input?.value) {
+                          joinGame(input.value);
+                        }
+                      }}
+                      className="btn btn-secondary"
+                    >
+                      Join
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="mode-picker">
+                  <p className="mode-picker-title">Choose Your Mode</p>
+                  <div className="mode-cards">
+                    <button className="mode-card mode-card-classic" onClick={() => createGame('classic')}>
+                      <div className="mode-card-planes">
+                        <svg className="mc-plane mc-plane-1" viewBox="0 0 64 64" fill="none">
+                          <path d="M32 4L28 20H12L8 28H26L22 52L28 48V60L32 56L36 60V48L42 52L38 28H56L52 20H36L32 4Z"
+                                fill="currentColor" fillOpacity="0.25" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                        </svg>
+                        <svg className="mc-plane mc-plane-2" viewBox="0 0 64 64" fill="none">
+                          <path d="M32 4L28 20H12L8 28H26L22 52L28 48V60L32 56L36 60V48L42 52L38 28H56L52 20H36L32 4Z"
+                                fill="currentColor" fillOpacity="0.25" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                      <h3>Classic</h3>
+                      <p>2 planes per player</p>
+                    </button>
+                    <button className="mode-card mode-card-strategic" onClick={() => createGame('strategic')}>
+                      <div className="mode-card-planes">
+                        <svg className="mc-plane mc-plane-1" viewBox="0 0 64 64" fill="none">
+                          <path d="M32 4L28 20H12L8 28H26L22 52L28 48V60L32 56L36 60V48L42 52L38 28H56L52 20H36L32 4Z"
+                                fill="currentColor" fillOpacity="0.25" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                        </svg>
+                        <svg className="mc-plane mc-plane-2" viewBox="0 0 64 64" fill="none">
+                          <path d="M32 4L28 20H12L8 28H26L22 52L28 48V60L32 56L36 60V48L42 52L38 28H56L52 20H36L32 4Z"
+                                fill="currentColor" fillOpacity="0.25" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                        </svg>
+                        <svg className="mc-plane mc-plane-3" viewBox="0 0 64 64" fill="none">
+                          <path d="M32 4L28 20H12L8 28H26L22 52L28 48V60L32 56L36 60V48L42 52L38 28H56L52 20H36L32 4Z"
+                                fill="currentColor" fillOpacity="0.25" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                      <h3>Strategic</h3>
+                      <p>3 planes per player</p>
+                    </button>
+                  </div>
+                  <button className="btn-back" onClick={() => setShowModeSelector(false)}>
+                    &larr; Back
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -170,7 +220,7 @@ function App() {
                   </svg>
                 </div>
                 <h3>Deploy</h3>
-                <p>Place 2 planes on your 10x10 grid. Position them wisely — your opponent is doing the same.</p>
+                <p>Place your planes on the 10x10 grid. Position them wisely — your opponent is doing the same.</p>
               </div>
               <div className="step">
                 <div className="step-icon">
@@ -194,7 +244,7 @@ function App() {
                   </svg>
                 </div>
                 <h3>Destroy</h3>
-                <p>Hit the cockpit to down a plane. Destroy both enemy planes to claim victory.</p>
+                <p>Hit the cockpit to down a plane. Destroy all enemy planes to claim victory.</p>
               </div>
             </div>
           </section>
@@ -225,10 +275,10 @@ function App() {
 
           <div className="game-content-wrapper">
             <div className={state.waitingForOpponent ? 'game-content-blurred' : ''}>
-              {state.gameState === 'placing' && state.planesPlaced < 2 && (
-                <PlanePlacement onPlanesPlaced={handlePlanesPlaced} disabled={!state.opponentConnected} />
+              {state.gameState === 'placing' && state.planesPlaced < state.maxPlanes && (
+                <PlanePlacement onPlanesPlaced={handlePlanesPlaced} disabled={!state.opponentConnected} maxPlanes={state.maxPlanes} />
               )}
-              {state.gameState === 'placing' && state.planesPlaced === 2 && (
+              {state.gameState === 'placing' && state.planesPlaced === state.maxPlanes && (
                 <div className="game-boards">
                   <div className="board-container">
                     <h3>Your Airspace</h3>

@@ -14,8 +14,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from application.game_service import GameService
-from application.schemas import parse_client_message, AuthMessage, ContinueGameRequest
+from application.schemas import parse_client_message, AuthMessage, CreateGameRequest, ContinueGameRequest
 from domain.models import GameState
+from domain.value_objects import GameMode
 from infrastructure.game_store import GameStore
 
 logger = logging.getLogger(__name__)
@@ -166,10 +167,11 @@ async def root():
 
 
 @app.post("/game/create")
-async def create_game():
+async def create_game(body: CreateGameRequest = CreateGameRequest()):
     """Create a new game"""
-    game_id = await game_service.create_game()
-    return {"game_id": game_id}
+    mode = GameMode(body.mode)
+    game_id = await game_service.create_game(mode=mode)
+    return {"game_id": game_id, "mode": mode.value}
 
 
 @app.get("/game/{game_id}")

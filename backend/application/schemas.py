@@ -58,6 +58,18 @@ class AuthMessage(BaseModel):
     token: str | None = None
 
 
+class CreateGameRequest(BaseModel):
+    """HTTP body for POST /game/create."""
+    mode: str = "classic"
+
+    @field_validator("mode")
+    @classmethod
+    def valid_mode(cls, v: str) -> str:
+        if v not in ("classic", "strategic"):
+            raise ValueError(f"Mode must be 'classic' or 'strategic', got '{v}'")
+        return v
+
+
 class ContinueGameRequest(BaseModel):
     """HTTP body for POST /game/{game_id}/continue."""
     session_token: str

@@ -1001,8 +1001,132 @@ class TestGameInfoHardening:
         game_id = _create_game(client)
         response = client.get(f"/game/{game_id}")
         data = response.json()
-        assert set(data.keys()) == {"id", "state"}
+        assert set(data.keys()) == {"id", "state", "mode"}
 
     def test_get_game_nonexistent_returns_404(self, client):
         response = client.get("/game/nonexistent-id")
         assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Game mode integration tests
+# ---------------------------------------------------------------------------
+
+# Third non-overlapping plane for strategic mode
+PLANE_3 = {"type": "place_plane", "head_x": 5, "head_y": 9, "orientation": "down"}
+PLANE_3_HEAD = (5, 9)
+
+
+def _create_strategic_game(client) -> str:
+    res = client.post("/game/create", json={"mode": "strategic"})
+    assert res.status_code == 200
+    return res.json()["game_id"]
+
+
+def _place_all_strategic_planes(ws1, ws2):
+    """Both players place 3 planes; consumes all resulting messages including game_started."""
+    for ws in (ws1, ws2):
+        ws.send_json(PLANE_1)
+        r = ws.receive_json()
+        assert r["type"] == "plane_placed" and r["success"] is True
+
+        ws.send_json(PLANE_2)
+        r = ws.receive_json()
+        assert r["type"] == "plane_placed" and r["success"] is True
+
+        ws.send_json(PLANE_3)
+        r = ws.receive_json()
+        assert r["type"] == "plane_placed" and r["success"] is True
+
+    # Both receive game_started
+    s1 = ws1.receive_json()
+    s2 = ws2.receive_json()
+    assert s1["type"] == "game_started" and s1["current_turn"] == "player1"
+    assert s2["type"] == "game_started" and s2["current_turn"] == "player1"
+
+
+class TestStrategicModeFullGame:
+
+    def test_strategic_game_needs_3_planes(self, client):
+        """In strategic mode, game should NOT start until 3 planes are placed."""
+        game_id = _create_strategic_game(client)
+        with _ws_connect(client, game_id) as ws1:
+            ws1.receive_json()  # player_assigned
+            with _ws_connect(client, game_id) as ws2:
+                ws2.receive_json()  # player_assigned
+                ws1.receive_json()  # game_ready
+                ws2.receive_json()  # game_ready
+
+                # Place 2 planes each
+                for ws in (ws1, ws2):
+                    ws.send_json(PLANE_1)
+                    ws.receive_json()  # plane_placed
+                    ws.send_json(PLANE_2)
+                    ws.receive_json()  # plane_placed
+
+                # Game should NOT have started (need 3rd plane)
+                # Place 3rd plane for each
+                ws1.send_json(PLANE_3)
+                ws1.receive_json()  # plane_placed
+
+                ws2.send_json(PLANE_3)
+                ws2.receive_json()  # plane_placed
+
+                # Now game should start
+                s1 = ws1.receive_json()
+                s2 = ws2.receive_json()
+                assert s1["type"] == "game_started"
+                assert s2["type"] == "game_started"
+
+    def test_strategic_game_win_requires_3_cockpits(self, client):
+        """Player must destroy all 3 cockpits to win in strategic mode."""
+        game_id = _create_strategic_game(client)
+        with _ws_connect(client, game_id) as ws1:
+            ws1.receive_json()  # player_assigned
+            with _ws_connect(client, game_id) as ws2:
+                ws2.receive_json()  # player_assigned
+                ws1.receive_json()  # game_ready
+                ws2.receive_json()  # game_ready
+
+                _place_all_strategic_planes(ws1, ws2)
+
+                # P1 destroys P2's 1st cockpit
+                _do_attack(ws1, ws2, *PLANE_1_HEAD)
+                _consume_turn_changed(ws1, ws2)
+                # P2 misses
+                _do_attack(ws2, ws1, *EMPTY_CELL)
+                _consume_turn_changed(ws1, ws2)
+                # P1 destroys P2's 2nd cockpit
+                _do_attack(ws1, ws2, *PLANE_2_HEAD)
+                _consume_turn_changed(ws1, ws2)
+                # P2 misses
+                _do_attack(ws2, ws1, 0, 9)
+                _consume_turn_changed(ws1, ws2)
+                # P1 destroys P2's 3rd cockpit → game over
+                atk, dfn = _do_attack(ws1, ws2, *PLANE_3_HEAD)
+
+                go1 = ws1.receive_json()
+                go2 = ws2.receive_json()
+                assert go1["type"] == "game_over"
+                assert go1["winner"] == "player1"
+                assert go2["type"] == "game_over"
+                assert go2["winner"] == "player1"
+
+    def test_3rd_plane_rejected_in_classic_mode(self, client):
+        """Classic mode should reject a 3rd plane."""
+        game_id = _create_game(client)
+        with _ws_connect(client, game_id) as ws1:
+            ws1.receive_json()  # player_assigned
+            with _ws_connect(client, game_id) as ws2:
+                ws2.receive_json()  # player_assigned
+                ws1.receive_json()  # game_ready
+                ws2.receive_json()  # game_ready
+
+                ws1.send_json(PLANE_1)
+                ws1.receive_json()  # plane_placed (success)
+                ws1.send_json(PLANE_2)
+                ws1.receive_json()  # plane_placed (success)
+                ws1.send_json(PLANE_3)
+                r = ws1.receive_json()  # plane_placed (fail)
+                assert r["type"] == "plane_placed"
+                assert r["success"] is False
