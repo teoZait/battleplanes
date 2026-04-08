@@ -8,10 +8,15 @@
 h1 {
   font-size: 2.8rem;
   margin-bottom: 0;
-  color: #e0f0ff;
-  font-weight: 700;
-  letter-spacing: 4px;
+  font-weight: 800;
+  letter-spacing: 6px;
   text-transform: uppercase;
+  background: linear-gradient(135deg, #e0f0ff 0%, #00d2ff 50%, #006b9e 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(0 0 20px rgba(0, 210, 255, 0.3));
 }
 
 h1::before {

@@ -166,7 +166,7 @@ async def root():
     return {"message": "Warplanes API"}
 
 
-@app.post("/game/create")
+@app.post("/api/game/create")
 async def create_game(body: CreateGameRequest = CreateGameRequest()):
     """Create a new game"""
     mode = GameMode(body.mode)
@@ -174,18 +174,18 @@ async def create_game(body: CreateGameRequest = CreateGameRequest()):
     return {"game_id": game_id, "mode": mode.value}
 
 
-@app.get("/game/{game_id}")
+@app.get("/api/game/{game_id}")
 async def get_game(game_id: str):
     """Get game information"""
     game_info = await game_service.get_game_info(game_id)
-    
+
     if not game_info:
         raise HTTPException(status_code=404, detail="Game not found")
-    
+
     return game_info
 
 
-@app.post("/game/{game_id}/continue")
+@app.post("/api/game/{game_id}/continue")
 async def continue_game(game_id: str, body: ContinueGameRequest):
     """Create a new game that continues from the state of an existing one."""
     result = await game_service.continue_game(game_id, body.session_token)

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { GameState } from '.././reducers/gameReducer';
 import { ConnectionStatus } from '../hooks/UseGameWebSocket';
 import './GameInfo.css';
@@ -16,29 +17,18 @@ interface GameInfoProps {
 
 const GameInfo = ({ gameState, playerId, currentTurn, message, winner, gameId, connectionStatus, sessionExpired, onContinueGame }: GameInfoProps) => {
   const isMyTurn = playerId === currentTurn;
+  const [copied, setCopied] = useState(false);
 
-  const copyGameId = () => {
+  const copyGameLink = () => {
     if (gameId) {
-      navigator.clipboard.writeText(gameId);
-      alert('Game ID copied to clipboard!');
+      navigator.clipboard.writeText(`${window.location.origin}/game/${gameId}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
   return (
     <div className="game-info">
-      {gameId && (
-        <div className="game-id-box">
-          <div className="game-id-content">
-            <span className="game-id-label">Game ID:</span>
-            <span className="game-id-value">{gameId}</span>
-            <button className="copy-btn" onClick={copyGameId} title="Copy Game ID">
-              📋 Copy
-            </button>
-          </div>
-          <p className="game-id-hint">Share this ID with your opponent</p>
-        </div>
-      )}
-
       <div className="info-card">
         <div className="info-item">
           <span className="label">Status:</span>
@@ -73,6 +63,12 @@ const GameInfo = ({ gameState, playerId, currentTurn, message, winner, gameId, c
               {winner === playerId ? '🎉 You Won!' : '😢 You Lost'}
             </span>
           </div>
+        )}
+
+        {gameId && (
+          <button className={`copy-link-btn${copied ? ' copied' : ''}`} onClick={copyGameLink} title="Copy game link">
+            {copied ? '✓ Copied!' : '🔗 Copy Link'}
+          </button>
         )}
       </div>
 

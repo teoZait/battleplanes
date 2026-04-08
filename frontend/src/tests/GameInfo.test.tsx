@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, act } from '@testing-library/react';
 import GameInfo from '../components/GameInfo';
 import type { GameState } from '../reducers/gameReducer';
 import type { ConnectionStatus } from '../hooks/UseGameWebSocket';
@@ -18,33 +18,16 @@ const defaultProps = {
 
 describe('GameInfo - Connection Status Display', () => {
 
-  it('should not show connection banner when connected', () => {
-    render(<GameInfo {...defaultProps} connectionStatus="connected" />);
-
-    expect(screen.queryByText('Connecting...')).toBeNull();
-    expect(screen.queryByText('Connection lost. Reconnecting...')).toBeNull();
+  it('should not show connection banner when connected or disconnected', () => {
+    for (const status of ['connected', 'disconnected'] as ConnectionStatus[]) {
+      const { unmount } = render(<GameInfo {...defaultProps} connectionStatus={status} />);
+      expect(screen.queryByText('Connecting...')).toBeNull();
+      expect(screen.queryByText('Connection lost. Reconnecting...')).toBeNull();
+      unmount();
+    }
   });
 
-  it('should not show connection banner when disconnected', () => {
-    render(<GameInfo {...defaultProps} connectionStatus="disconnected" />);
-
-    expect(screen.queryByText('Connecting...')).toBeNull();
-    expect(screen.queryByText('Connection lost. Reconnecting...')).toBeNull();
-  });
-
-  it('should show "Connecting..." when status is connecting', () => {
-    render(<GameInfo {...defaultProps} connectionStatus="connecting" />);
-
-    expect(screen.getByText('Connecting...')).toBeTruthy();
-  });
-
-  it('should show reconnecting message when status is reconnecting', () => {
-    render(<GameInfo {...defaultProps} connectionStatus="reconnecting" />);
-
-    expect(screen.getByText('Connection lost. Reconnecting...')).toBeTruthy();
-  });
-
-  it('should apply correct CSS class for connecting status', () => {
+  it('should show connecting banner with correct text and CSS class', () => {
     const { container } = render(<GameInfo {...defaultProps} connectionStatus="connecting" />);
 
     const el = container.querySelector('.connection-status');
@@ -53,7 +36,7 @@ describe('GameInfo - Connection Status Display', () => {
     expect(el!.textContent).toBe('Connecting...');
   });
 
-  it('should apply correct CSS class for reconnecting status', () => {
+  it('should show reconnecting banner with correct text and CSS class', () => {
     const { container } = render(<GameInfo {...defaultProps} connectionStatus="reconnecting" />);
 
     const el = container.querySelector('.connection-status');
@@ -64,12 +47,6 @@ describe('GameInfo - Connection Status Display', () => {
 });
 
 describe('GameInfo - Existing Functionality Preserved', () => {
-
-  it('should display game ID', () => {
-    render(<GameInfo {...defaultProps} />);
-
-    expect(screen.getByText('test-game-id')).toBeTruthy();
-  });
 
   it('should show waiting status', () => {
     render(<GameInfo {...defaultProps} gameState="waiting" />);
@@ -140,16 +117,53 @@ describe('GameInfo - Existing Functionality Preserved', () => {
   });
 });
 
+describe('GameInfo - Copy Game Link', () => {
+
+  it('should show "Copy Link" button when gameId exists', () => {
+    render(<GameInfo {...defaultProps} gameId="test-game-id" />);
+
+    const btn = screen.getByTitle('Copy game link');
+    expect(btn).toBeTruthy();
+    expect(btn.textContent).toContain('Copy Link');
+  });
+
+  it('should not show raw game ID text', () => {
+    render(<GameInfo {...defaultProps} gameId="test-game-id" />);
+
+    expect(screen.queryByText('test-game-id')).toBeNull();
+  });
+
+  it('should copy full game URL to clipboard and show confirmation', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<GameInfo {...defaultProps} gameId="abc-123" />);
+
+    const btn = screen.getByTitle('Copy game link');
+    expect(btn.textContent).toContain('Copy Link');
+
+    act(() => btn.click());
+
+    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/game/abc-123`);
+    expect(btn.textContent).toContain('Copied!');
+  });
+
+  it('should not call clipboard when gameId is null', () => {
+    const writeText = vi.fn();
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<GameInfo {...defaultProps} gameId={null} />);
+
+    // No copy button rendered when no gameId
+    expect(screen.queryByTitle('Copy game link')).toBeNull();
+    expect(writeText).not.toHaveBeenCalled();
+  });
+});
+
 describe('GameInfo - Session Expired Banner', () => {
 
   it('should not show session expired banner by default', () => {
     const { container } = render(<GameInfo {...defaultProps} />);
-
-    expect(container.querySelector('.session-expired-banner')).toBeNull();
-  });
-
-  it('should not show session expired banner when sessionExpired is false', () => {
-    const { container } = render(<GameInfo {...defaultProps} sessionExpired={false} />);
 
     expect(container.querySelector('.session-expired-banner')).toBeNull();
   });
