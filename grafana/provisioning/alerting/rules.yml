@@ -1,0 +1,132 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: battleplanes-alerts
+    folder: Battleplanes
+    interval: 1m
+    rules:
+      - uid: high-error-rate
+        title: High HTTP Error Rate
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: battleplanes-prometheus
+            model:
+              expr: sum(rate(battleplanes_http_requests_total{status=~"5.."}[5m]))
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.1]
+              refId: C
+        for: 2m
+        annotations:
+          summary: "5xx error rate is above 0.1 req/s for the last 2 minutes."
+        labels:
+          severity: critical
+
+      - uid: high-latency
+        title: High Request Latency
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: battleplanes-prometheus
+            model:
+              expr: histogram_quantile(0.99, sum by (le) (rate(battleplanes_http_request_duration_seconds_bucket[5m])))
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [1.0]
+              refId: C
+        for: 5m
+        annotations:
+          summary: "p99 request latency is above 1 second for the last 5 minutes."
+        labels:
+          severity: warning
+
+      - uid: scrape-down
+        title: Backend Scrape Failing
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: battleplanes-prometheus
+            model:
+              expr: up{job="battleplanes-backend"}
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+              refId: C
+        for: 2m
+        annotations:
+          summary: "Prometheus cannot reach the backend /metrics/ endpoint. The backend may be down."
+        labels:
+          severity: critical
