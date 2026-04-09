@@ -430,6 +430,35 @@ class TestDisconnect:
         assert ws2.find("player_disconnected") is not None
 
     @pytest.mark.asyncio
+    async def test_disconnect_after_finished_does_not_notify(self, service):
+        """After a finished game, disconnecting should NOT send player_disconnected."""
+        gid, ws1, ws2 = await _setup_playing(service)
+
+        # Play to completion
+        await service.handle_attack(gid, "player1", 2, 0)  # head_hit
+        await service.handle_attack(gid, "player2", 5, 5)  # miss
+        await service.handle_attack(gid, "player1", 7, 0)  # head_hit → game over
+
+        ws1.clear()
+        ws2.clear()
+
+        await service.handle_player_disconnection(gid, "player2")
+        assert ws1.find("player_disconnected") is None
+
+    @pytest.mark.asyncio
+    async def test_disconnect_after_finished_does_not_clear_slot(self, service):
+        """After a finished game, disconnecting should NOT clear the player slot."""
+        gid, ws1, ws2 = await _setup_playing(service)
+
+        await service.handle_attack(gid, "player1", 2, 0)
+        await service.handle_attack(gid, "player2", 5, 5)
+        await service.handle_attack(gid, "player1", 7, 0)  # game over
+
+        await service.handle_player_disconnection(gid, "player2")
+        game = await service.get_game(gid)
+        assert game.players["player2"] is not None
+
+    @pytest.mark.asyncio
     async def test_reconnect_sends_game_resumed(self, service):
         gid, ws1, ws2 = await _setup_playing(service)
         game = await service.get_game(gid)

@@ -291,6 +291,10 @@ class GameService:
             return
         
         if game.state != GameState.PLAYING:
+            await self.connection_manager.send_to_player(game_id, player_id, {
+                "type": "error",
+                "message": "Game is not in progress",
+            })
             return
         
         if game.current_turn != player_id:
@@ -380,8 +384,14 @@ class GameService:
 
         self.connection_manager.disconnect(game_id, player_id)
 
-        # Clear the player slot so a reconnecting client can reclaim it
         game = await self.get_game(game_id)
+
+        # After a finished game, disconnections are expected — no need to
+        # notify the remaining player or clear the slot.
+        if game and game.state == GameState.FINISHED:
+            return
+
+        # Clear the player slot so a reconnecting client can reclaim it
         if game:
             game.players[player_id] = None
 
