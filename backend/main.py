@@ -12,12 +12,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from prometheus_client import make_asgi_app
 from pydantic import ValidationError
 from application.game_service import GameService
 from application.schemas import parse_client_message, AuthMessage, CreateGameRequest, ContinueGameRequest
 from domain.models import GameState
 from domain.value_objects import GameMode
 from infrastructure.game_store import GameStore
+from metrics import HTTP_REQUESTS, HTTP_REQUEST_DURATION, WS_MESSAGES_RECEIVED
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +67,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Warplanes API", lifespan=lifespan)
+
+# Prometheus metrics endpoint — scraped by the Prometheus container over the
+# internal Docker network.  Nginx blocks external access to /metrics.
+app.mount("/metrics", make_asgi_app())
 
 # CORS middleware - restrict to configured origins.
 # In production CORS_ALLOWED_ORIGINS must be set; localhost defaults are for
@@ -139,7 +145,7 @@ def _get_client_ip(request: Request) -> str:
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    if request.url.path == "/":  # skip health check
+    if request.url.path in ("/", "/metrics"):
         return await call_next(request)
 
     client_ip = _get_client_ip(request)
@@ -152,12 +158,20 @@ async def rate_limit_middleware(request: Request, call_next):
     _rate_limit_store[client_ip].append(now)
 
     if len(_rate_limit_store[client_ip]) > RATE_LIMIT_MAX_REQUESTS:
+        HTTP_REQUESTS.labels(method=request.method, endpoint=request.url.path, status="429").inc()
         return JSONResponse(
             status_code=429,
             content={"detail": "Too many requests. Try again later."}
         )
 
-    return await call_next(request)
+    start = time.time()
+    response = await call_next(request)
+    duration = time.time() - start
+
+    HTTP_REQUESTS.labels(method=request.method, endpoint=request.url.path, status=str(response.status_code)).inc()
+    HTTP_REQUEST_DURATION.labels(method=request.method, endpoint=request.url.path).observe(duration)
+
+    return response
 
 
 @app.get("/")
@@ -265,6 +279,7 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
         while True:
             # #15 — Message size limit: read raw text, check length, then parse
             raw = await websocket.receive_text()
+            WS_MESSAGES_RECEIVED.inc()
 
             if len(raw) > _WS_MAX_MSG_SIZE:
                 await game_service.connection_manager.send_to_player(

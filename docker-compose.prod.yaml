@@ -18,3 +18,7 @@ services:
       dockerfile: Dockerfile
       args:
         NGINX_CONF: nginx.prod.conf
+
+  grafana:
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}

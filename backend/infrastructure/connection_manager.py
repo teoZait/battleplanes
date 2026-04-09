@@ -4,6 +4,7 @@ Infrastructure - WebSocket Connection Management
 import logging
 from typing import Dict
 from fastapi import WebSocket
+from metrics import WS_CONNECTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +20,13 @@ class ConnectionManager:
         if game_id not in self.active_connections:
             self.active_connections[game_id] = {}
         self.active_connections[game_id][player_id] = websocket
+        WS_CONNECTIONS.inc()
 
     def disconnect(self, game_id: str, player_id: str):
         """Remove a WebSocket connection"""
         if game_id in self.active_connections and player_id in self.active_connections[game_id]:
             del self.active_connections[game_id][player_id]
+            WS_CONNECTIONS.dec()
 
     async def send_to_player(self, game_id: str, player_id: str, message: dict):
         """Send a message to a specific player. Silently handles broken connections."""

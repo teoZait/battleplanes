@@ -13,6 +13,10 @@ from domain.models import Game
 from domain.value_objects import GameState, GameMode
 from infrastructure.connection_manager import ConnectionManager
 from infrastructure.game_store import GameStore
+from metrics import (
+    ACTIVE_GAMES, GAMES_BY_STATE, GAMES_CREATED,
+    GAMES_FINISHED, GAMES_CLEANED_UP,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +36,15 @@ class GameService:
         self._game_locks: Dict[str, asyncio.Lock] = {}
         self._cleanup_task: Optional[asyncio.Task] = None
 
+    def _sync_game_gauges(self) -> None:
+        """Recompute gauge values from the current in-memory game dict."""
+        ACTIVE_GAMES.set(len(self.games))
+        counts: dict[str, int] = {}
+        for game in self.games.values():
+            counts[game.state.value] = counts.get(game.state.value, 0) + 1
+        for state in GameState:
+            GAMES_BY_STATE.labels(state=state.value).set(counts.get(state.value, 0))
+
     def _get_lock(self, game_id: str) -> asyncio.Lock:
         """Get or create a per-game asyncio lock."""
         if game_id not in self._game_locks:
@@ -42,6 +55,7 @@ class GameService:
         """Verify Redis, load persisted games, and start background cleanup."""
         await self._game_store.ping()
         self.games = await self._game_store.load_all()
+        self._sync_game_gauges()
         self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
 
     async def shutdown(self) -> None:
@@ -77,6 +91,8 @@ class GameService:
                 del self.connection_manager.active_connections[game_id]
             await self._game_store.delete(game_id)
         if stale_ids:
+            GAMES_CLEANED_UP.inc(len(stale_ids))
+            self._sync_game_gauges()
             logger.info("Cleaned up %d stale game(s)", len(stale_ids))
 
     async def _persist(self, game_id: str) -> None:
@@ -88,6 +104,8 @@ class GameService:
         """Create a new game and return its ID"""
         game_id = str(uuid.uuid4())
         self.games[game_id] = Game(game_id, mode=mode)
+        GAMES_CREATED.labels(mode=mode.value).inc()
+        self._sync_game_gauges()
         await self._persist(game_id)
         return game_id
     
@@ -170,6 +188,7 @@ class GameService:
             # State transition when the second player arrives
             if player_id == "player2" and game.state == GameState.WAITING:
                 game.state = GameState.PLACING
+                self._sync_game_gauges()
 
             await self.connection_manager.connect(game_id, player_id, websocket)
 
@@ -257,6 +276,7 @@ class GameService:
             # Check if both players are ready
             if game.are_both_players_ready():
                 game.start_game()
+                self._sync_game_gauges()
                 await self.connection_manager.broadcast_to_game(game_id, {
                     "type": "game_started",
                     "current_turn": game.current_turn
@@ -323,6 +343,8 @@ class GameService:
         winner = game.check_winner()
         if winner:
             game.finish_game()
+            GAMES_FINISHED.inc()
+            self._sync_game_gauges()
             for pid in ("player1", "player2"):
                 opponent = "player2" if pid == "player1" else "player1"
                 await self.connection_manager.send_to_player(game_id, pid, {
