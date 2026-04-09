@@ -21,6 +21,11 @@ GAMES_CREATED = Counter(
     "Total games created",
     ["mode"],
 )
+# Pre-initialise label combinations so the time series exist from startup
+# (prometheus_client only exports a counter after the first .inc() otherwise).
+GAMES_CREATED.labels(mode="classic")
+GAMES_CREATED.labels(mode="elite")
+
 GAMES_FINISHED = Counter(
     "battleplanes_games_finished_total",
     "Total games that reached a winner",
