@@ -4,12 +4,14 @@ contactPoints:
     name: slack
     receivers:
       - uid: slack-webhook
-        type: slack
+        type: webhook
+        disableResolveMessage: false
         settings:
           url: $SLACK_WEBHOOK_URL
+          httpMethod: POST
           title: |
             {{ if eq .Status "firing" }}ALERT{{ else }}RESOLVED{{ end }}: {{ .CommonLabels.alertname }}
-          text: |
+          message: |
             {{ range .Alerts }}
             {{ .Annotations.summary }}
             {{ end }}

@@ -878,6 +878,30 @@ class TestSessionExpiredNotification:
             msg = ws1.receive_json()
             assert msg["type"] == "opponent_session_expired"
 
+    def test_failed_rejoin_after_finished_game_does_not_notify(self, playing_game, client):
+        """After a finished game, a failed rejoin should NOT send opponent_session_expired."""
+        game_id, ws1, ws2 = playing_game
+
+        # Play to completion
+        _do_attack(ws1, ws2, *PLANE_1_HEAD)
+        _consume_turn_changed(ws1, ws2)
+        _do_attack(ws2, ws1, *EMPTY_CELL)
+        _consume_turn_changed(ws1, ws2)
+        _do_attack(ws1, ws2, *PLANE_2_HEAD)  # game over
+
+        ws1.receive_json()  # game_over
+        ws2.receive_json()  # game_over
+
+        # Someone tries to join without a valid token
+        with _ws_connect(client, game_id) as ws_bad:
+            ws_bad.receive_json()  # error
+
+        # ws1 should NOT have received opponent_session_expired.
+        # Request boards to flush the socket — get_boards always responds.
+        ws1.send_json({"type": "get_boards"})
+        msg = ws1.receive_json()
+        assert msg["type"] == "boards_update"  # not opponent_session_expired
+
 
 class TestContinueGameEndpoint:
 

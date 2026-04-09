@@ -159,6 +159,11 @@ export function gameReducer(
       };
 
     case 'player_disconnected':
+      // After a finished game, disconnections are expected — don't
+      // show the "waiting for opponent" overlay or offer to continue.
+      if (state.gameState === 'finished') {
+        return { ...state, opponentConnected: false };
+      }
       return {
         ...state,
         opponentConnected: false,
@@ -175,6 +180,11 @@ export function gameReducer(
       };
 
     case 'opponent_session_expired':
+      // After a finished game, a failed rejoin is expected — don't
+      // show the "continue" banner.
+      if (state.gameState === 'finished') {
+        return { ...state, opponentConnected: false };
+      }
       return {
         ...state,
         opponentConnected: false,

@@ -26,6 +26,15 @@ describe('gameReducer - opponentConnected', () => {
     expect(state.waitingForOpponent).toBe(true);
   });
 
+  it('should not set waitingForOpponent on player_disconnected after game finished', () => {
+    const finished: GameUIState = { ...baseState, gameState: 'finished', winner: 'player1' };
+    const action: ServerMessage = { type: 'player_disconnected' };
+    const state = gameReducer(finished, action);
+    expect(state.opponentConnected).toBe(false);
+    expect(state.waitingForOpponent).toBe(false);
+    expect(state.gameState).toBe('finished');
+  });
+
   it('should set opponentConnected to true on player_reconnected', () => {
     const disconnected = { ...baseState, opponentConnected: false };
     const action: ServerMessage = { type: 'player_reconnected', player_id: 'player2' };
@@ -158,6 +167,15 @@ describe('gameReducer - opponent_session_expired', () => {
     expect(state.message).toBe('Your opponent cannot rejoin.');
   });
 
+  it('should not set sessionExpired after game finished', () => {
+    const finished: GameUIState = { ...baseState, gameState: 'finished', winner: 'player1' };
+    const action: ServerMessage = { type: 'opponent_session_expired', message: 'Session expired' };
+    const state = gameReducer(finished, action);
+    expect(state.sessionExpired).toBe(false);
+    expect(state.opponentConnected).toBe(false);
+    expect(state.gameState).toBe('finished');
+  });
+
   it('should clear waitingForOpponent so expired banner takes over', () => {
     const disconnected: GameUIState = { ...baseState, waitingForOpponent: true, opponentConnected: false };
     const action: ServerMessage = { type: 'opponent_session_expired', message: 'Gone.' };
@@ -263,13 +281,6 @@ describe('gameReducer - waitingForOpponent', () => {
     expect(state.opponentConnected).toBe(true);
   });
 
-  it('should set waitingForOpponent to true on player_disconnected', () => {
-    const playing: GameUIState = { ...baseState, gameState: 'playing', opponentConnected: true };
-    const action: ServerMessage = { type: 'player_disconnected' };
-    const state = gameReducer(playing, action);
-    expect(state.waitingForOpponent).toBe(true);
-    expect(state.opponentConnected).toBe(false);
-  });
 });
 
 describe('gameReducer - game_over', () => {

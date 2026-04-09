@@ -257,11 +257,14 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
     )
 
     if player_id is None:
-        # Notify remaining players that a rejoin attempt failed
-        await game_service.connection_manager.broadcast_to_game(game_id, {
-            "type": "opponent_session_expired",
-            "message": "Your opponent's session has expired and they cannot rejoin this game.",
-        })
+        # Notify remaining players that a rejoin attempt failed — but not
+        # after a finished game, where the opponent leaving is expected.
+        game = await game_service.get_game(game_id)
+        if not game or game.state != GameState.FINISHED:
+            await game_service.connection_manager.broadcast_to_game(game_id, {
+                "type": "opponent_session_expired",
+                "message": "Your opponent's session has expired and they cannot rejoin this game.",
+            })
         try:
             await websocket.send_json({
                 "type": "error",
