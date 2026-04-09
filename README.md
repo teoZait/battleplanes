@@ -18,6 +18,7 @@ A real-time multiplayer strategy game where two players place planes on a grid a
 - [Project Structure](#project-structure)
 - [API Reference](#api-reference)
 - [Configuration](#configuration)
+- [Monitoring](#monitoring)
 - [Deployment](#deployment)
 - [License](#license)
 
@@ -71,6 +72,7 @@ Planes can be rotated in 4 orientations: UP, RIGHT, DOWN, LEFT.
 | Frontend   | React 18, TypeScript, Vite                              |
 | State      | Redis 7 (async, authenticated)                          |
 | Realtime   | WebSockets with session-token auth and reconnection     |
+| Monitoring | Prometheus, Grafana (dashboards + Slack alerts)         |
 | Infra      | Docker Compose (dev), Kubernetes + Nginx (prod)         |
 | Testing    | pytest + pytest-asyncio (backend), Vitest (frontend)    |
 
@@ -189,6 +191,7 @@ docker run --rm -v "$(pwd)":/app -w /app node:18-alpine \
 battleplanes/
 ├── backend/
 │   ├── main.py                        # FastAPI app, routes, WS endpoint
+│   ├── metrics.py                     # Prometheus metric definitions
 │   ├── domain/
 │   │   ├── models.py                  # Game aggregate root
 │   │   ├── game_logic.py              # Pure game rules
@@ -233,6 +236,14 @@ battleplanes/
 │   ├── ingress.yaml
 │   ├── cert-issuer.yaml
 │   └── namespace.yaml
+├── prometheus.yml                      # Prometheus scrape config
+├── grafana/
+│   ├── provisioning/
+│   │   ├── datasources/prometheus.yml  # Auto-configured data source
+│   │   ├── dashboards/dashboards.yml   # Dashboard provider config
+│   │   └── alerting/                   # Contact points, policies, rules
+│   └── dashboards/
+│       └── battleplanes.json           # Pre-built overview dashboard
 ├── docker compose.yaml                # Local development
 └── docker compose.prod.yaml           # Production compose
 ```
@@ -295,6 +306,67 @@ Connect to `ws://HOST/ws/{game_id}`. Auth is sent as the first frame (`{type: "a
 | `REDIS_PASSWORD`       | `changeme`                       | Redis auth password                   |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost,https://localhost` | Comma-separated allowed origins    |
 | `VITE_API_URL`         | *(empty — same origin)*         | Backend URL (frontend build-time)     |
+| `GRAFANA_ADMIN_PASSWORD` | `changeme`                    | Grafana admin UI password             |
+| `SLACK_WEBHOOK_URL`    | *(empty)*                        | Slack webhook for alert notifications |
+
+---
+
+## Monitoring
+
+The app includes Prometheus + Grafana for metrics collection, dashboards, and alerting.
+
+### What's Tracked
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `battleplanes_active_games` | Gauge | Games currently in memory |
+| `battleplanes_games_by_state` | Gauge | Games broken down by state (waiting, placing, playing, finished) |
+| `battleplanes_games_created_total` | Counter | Total games created, by mode |
+| `battleplanes_games_finished_total` | Counter | Total games that reached a winner |
+| `battleplanes_games_cleaned_up_total` | Counter | Stale games removed by cleanup |
+| `battleplanes_ws_connections` | Gauge | Active WebSocket connections |
+| `battleplanes_ws_messages_received_total` | Counter | Total WebSocket messages from clients |
+| `battleplanes_http_requests_total` | Counter | HTTP requests by method, endpoint, status |
+| `battleplanes_http_request_duration_seconds` | Histogram | Request latency distribution |
+
+### Dashboard
+
+A pre-built Grafana dashboard is provisioned automatically with panels for all metrics above. No manual setup needed — just open Grafana.
+
+### Alerts
+
+| Alert | Fires when | Severity |
+|-------|------------|----------|
+| High HTTP Error Rate | 5xx rate > 0.1 req/s for 2 min | Critical |
+| High Request Latency | p99 > 1s for 5 min | Warning |
+| Backend Scrape Failing | Prometheus can't reach `/metrics/` for 2 min | Critical |
+
+Alerts are sent to Slack via the configured webhook URL.
+
+### Accessing Locally
+
+Prometheus and Grafana are available at `localhost` after `docker compose up`:
+
+| Service    | URL                      | Credentials        |
+|------------|--------------------------|---------------------|
+| Grafana    | http://localhost:3000    | admin / changeme    |
+| Prometheus | http://localhost:9090    | *(no auth)*         |
+
+### Accessing on the Droplet
+
+Both services are bound to `127.0.0.1` — not exposed to the internet. Access them via SSH tunnel:
+
+```bash
+ssh -L 3000:localhost:3000 -L 9090:localhost:9090 your-droplet
+```
+
+Then open `http://localhost:3000` on your machine.
+
+### Security
+
+- `/metrics` endpoint is blocked by Nginx — Prometheus scrapes the backend directly over the Docker network
+- Prometheus and Grafana ports are bound to `127.0.0.1` (loopback only)
+- Grafana admin password is set via `GRAFANA_ADMIN_PASSWORD` env var
 
 ---
 
