@@ -1,4 +1,4 @@
-import { useState, useReducer, useCallback, useEffect } from 'react';
+import { useState, useReducer, useCallback, useEffect, useRef } from 'react';
 import './App.css';
 import GameBoard from './components/GameBoard';
 import PlanePlacement from './components/PlanePlacement';
@@ -47,6 +47,19 @@ function App() {
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
+
+  const prevGameStateRef = useRef(state.gameState);
+  const [showBattleFlash, setShowBattleFlash] = useState(false);
+
+  useEffect(() => {
+    if (prevGameStateRef.current === 'placing' && state.gameState === 'playing') {
+      setShowBattleFlash(true);
+      const timer = setTimeout(() => setShowBattleFlash(false), 1800);
+      prevGameStateRef.current = state.gameState;
+      return () => clearTimeout(timer);
+    }
+    prevGameStateRef.current = state.gameState;
+  }, [state.gameState]);
 
   const { send, connectionStatus } = useGameWebSocket({
     gameId,
@@ -140,6 +153,11 @@ function App() {
 
   return (
     <div className="App">
+      {showBattleFlash && (
+        <div className="battle-flash">
+          <span>Battle!</span>
+        </div>
+      )}
       <h1>Battleplanes</h1>
 
       {!gameId && (

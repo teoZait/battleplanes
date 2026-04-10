@@ -36,6 +36,34 @@
   }
 }
 
+/* Scanning line effect */
+.game-board::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(0, 210, 255, 0.5), rgba(0, 210, 255, 0.8), rgba(0, 210, 255, 0.5), transparent);
+  box-shadow: 0 0 10px rgba(0, 210, 255, 0.3), 0 0 20px rgba(0, 210, 255, 0.15);
+  animation: scan-line 4s ease-in-out infinite;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.game-board.enemy::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 92, 105, 0.5), rgba(255, 92, 105, 0.8), rgba(255, 92, 105, 0.5), transparent);
+  box-shadow: 0 0 10px rgba(255, 92, 105, 0.3), 0 0 20px rgba(255, 92, 105, 0.15);
+  animation: scan-line 4s ease-in-out infinite 2s;
+}
+
+@keyframes scan-line {
+  0% { top: 0; opacity: 0; }
+  5% { opacity: 0.6; }
+  95% { opacity: 0.6; }
+  100% { top: calc(100% - 2px); opacity: 0; }
+}
+
 /* Turn indicator: active enemy board */
 .game-board.active-turn {
   border-color: #ff5c69;
@@ -171,6 +199,54 @@
   pointer-events: none;
 }
 
+/* Impact flash on hits */
+.cell.hit::before,
+.cell.head_hit::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 0%, rgba(255, 200, 50, 0.5) 40%, transparent 70%);
+  animation: impact-flash 0.4s ease-out forwards;
+  z-index: 15;
+  pointer-events: none;
+}
+
+.cell.head_hit::before {
+  background: radial-gradient(circle, rgba(255, 255, 255, 1) 0%, rgba(255, 200, 50, 0.8) 30%, rgba(255, 50, 50, 0.4) 60%, transparent 80%);
+  animation-duration: 0.5s;
+}
+
+@keyframes impact-flash {
+  0% { transform: translate(-50%, -50%) scale(0.3); opacity: 1; }
+  40% { transform: translate(-50%, -50%) scale(2.5); opacity: 0.8; }
+  100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
+}
+
+/* Strike tracer coming in */
+.cell.hit::after,
+.cell.head_hit::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  width: 2px;
+  height: 150%;
+  background: linear-gradient(to bottom, transparent 0%, rgba(255, 200, 50, 0.3) 30%, rgba(255, 200, 50, 0.8) 80%, rgba(255, 255, 255, 0.9) 100%);
+  animation: tracer-strike 0.25s ease-in forwards;
+  z-index: 14;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+@keyframes tracer-strike {
+  0% { bottom: 100%; opacity: 1; }
+  80% { bottom: 0; opacity: 1; }
+  100% { bottom: 0; opacity: 0; }
+}
+
 .cell.hit {
   background: linear-gradient(135deg, #ff3366 0%, #cc0033 100%);
   animation: hit-reveal 0.6s ease-out;
@@ -294,6 +370,92 @@
   }
 }
 
+/* Shockwave ring on hits */
+.shockwave-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 200, 50, 0.9);
+  animation: shockwave 0.8s ease-out forwards;
+  z-index: 12;
+  pointer-events: none;
+}
+
+.shockwave-ring.small {
+  border-color: rgba(255, 100, 50, 0.7);
+  border-width: 2px;
+  animation: shockwave-small 0.6s ease-out forwards;
+}
+
+@keyframes shockwave {
+  0% { width: 10px; height: 10px; opacity: 1; border-width: 3px; }
+  100% { width: 120px; height: 120px; opacity: 0; border-width: 1px; }
+}
+
+@keyframes shockwave-small {
+  0% { width: 8px; height: 8px; opacity: 1; border-width: 2px; }
+  100% { width: 80px; height: 80px; opacity: 0; border-width: 1px; }
+}
+
+/* Hit debris particles */
+.hit-particles {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 13;
+}
+
+.particle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #ff5c69;
+  box-shadow: 0 0 4px rgba(255, 92, 105, 0.8);
+  animation: particle-fly 0.7s ease-out forwards;
+}
+
+.hit-particles.big .particle {
+  width: 5px;
+  height: 5px;
+  background: #ffb84d;
+  box-shadow: 0 0 6px rgba(255, 184, 77, 0.9);
+  animation-duration: 0.9s;
+}
+
+.particle-0 { --tx: 25px; --ty: -20px; animation-delay: 0s; }
+.particle-1 { --tx: -20px; --ty: -25px; animation-delay: 0.02s; }
+.particle-2 { --tx: 30px; --ty: 5px; animation-delay: 0.04s; }
+.particle-3 { --tx: -25px; --ty: 15px; animation-delay: 0.06s; }
+.particle-4 { --tx: 10px; --ty: 30px; animation-delay: 0.08s; }
+.particle-5 { --tx: -15px; --ty: -30px; animation-delay: 0.03s; }
+.particle-6 { --tx: 28px; --ty: -10px; animation-delay: 0.05s; }
+.particle-7 { --tx: -30px; --ty: 8px; animation-delay: 0.07s; }
+.particle-8 { --tx: 20px; --ty: 25px; animation-delay: 0.02s; }
+.particle-9 { --tx: -28px; --ty: -18px; animation-delay: 0.04s; }
+.particle-10 { --tx: 15px; --ty: -28px; animation-delay: 0.06s; }
+.particle-11 { --tx: -10px; --ty: 28px; animation-delay: 0.08s; }
+
+@keyframes particle-fly {
+  0% {
+    transform: translate(-50%, -50%) translate(0, 0) scale(1.5);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) translate(var(--tx), var(--ty)) scale(0);
+    opacity: 0;
+  }
+}
+
 .fire {
   font-size: 20px;
   animation: flicker 0.5s infinite alternate;
@@ -383,6 +545,81 @@
     transform: scale(1.5);
     opacity: 0;
   }
+}
+
+/* Water ripple rings for misses */
+.water-ripples {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.ripple {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1.5px solid rgba(0, 210, 255, 0.6);
+  width: 4px;
+  height: 4px;
+  opacity: 0;
+  animation: ripple-expand 1.2s ease-out forwards;
+  pointer-events: none;
+}
+
+.cell.enemy .ripple {
+  border-color: rgba(255, 138, 156, 0.6);
+}
+
+.ripple-1 { animation-delay: 0s; }
+.ripple-2 { animation-delay: 0.2s; }
+.ripple-3 { animation-delay: 0.4s; }
+
+@keyframes ripple-expand {
+  0% { width: 4px; height: 4px; opacity: 0.8; }
+  100% { width: 50px; height: 50px; opacity: 0; }
+}
+
+/* Splash droplets for misses */
+.splash-drops {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 11;
+}
+
+.drop {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #74d7ff;
+  animation: drop-fly 0.6s ease-out forwards;
+}
+
+.cell.enemy .drop {
+  background: #ffb6c1;
+}
+
+.drop-0 { --dx: 8px; --dy: -18px; }
+.drop-1 { --dx: -10px; --dy: -15px; }
+.drop-2 { --dx: 12px; --dy: -12px; }
+.drop-3 { --dx: -6px; --dy: -20px; }
+.drop-4 { --dx: 3px; --dy: -16px; }
+
+@keyframes drop-fly {
+  0% { transform: translate(-50%, -50%) translate(0, 0) scale(1); opacity: 1; }
+  60% { transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) scale(1.2); opacity: 0.8; }
+  100% { transform: translate(-50%, -50%) translate(var(--dx), calc(var(--dy) + 15px)) scale(0.3); opacity: 0; }
 }
 
 /* Label styling (default - larger screens) */

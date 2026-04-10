@@ -121,12 +121,36 @@
   color: #74d7ff;
   font-size: 1.5rem;
   text-shadow: 0 0 15px rgba(116, 215, 255, 0.8);
+  animation: victory-glow 2s ease-in-out infinite;
+}
+
+@keyframes victory-glow {
+  0%, 100% {
+    text-shadow: 0 0 15px rgba(116, 215, 255, 0.8), 0 0 30px rgba(0, 210, 255, 0.4);
+    transform: scale(1);
+  }
+  50% {
+    text-shadow: 0 0 25px rgba(116, 215, 255, 1), 0 0 50px rgba(0, 210, 255, 0.6), 0 0 80px rgba(0, 210, 255, 0.3);
+    transform: scale(1.05);
+  }
 }
 
 .you-lost {
   color: #ff3366;
   font-size: 1.5rem;
   text-shadow: 0 0 10px rgba(255, 51, 102, 0.5);
+  animation: defeat-pulse 2s ease-in-out infinite;
+}
+
+@keyframes defeat-pulse {
+  0%, 100% {
+    text-shadow: 0 0 10px rgba(255, 51, 102, 0.5);
+    opacity: 1;
+  }
+  50% {
+    text-shadow: 0 0 20px rgba(255, 51, 102, 0.8), 0 0 40px rgba(255, 51, 102, 0.3);
+    opacity: 0.85;
+  }
 }
 
 .message-box {
@@ -135,9 +159,15 @@
   padding: 15px 25px;
   border-radius: 8px;
   max-width: 600px;
-  box-shadow: 
+  box-shadow:
     0 0 15px rgba(0, 210, 255, 0.2),
     inset 0 0 10px rgba(0, 210, 255, 0.05);
+  animation: message-slide-in 0.4s ease-out;
+}
+
+@keyframes message-slide-in {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 
 .message-box p {
@@ -185,6 +215,71 @@
 
 .session-expired-banner .btn {
   margin-top: 5px;
+}
+
+/* Victory confetti */
+.confetti-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 100;
+  overflow: hidden;
+}
+
+.confetti {
+  position: absolute;
+  top: -20px;
+  left: var(--x);
+  opacity: 0;
+  animation: confetti-fall var(--duration) var(--delay) ease-in forwards;
+}
+
+.confetti-0 { background: #00d2ff; width: 8px; height: 12px; border-radius: 2px; }
+.confetti-1 { background: #ff3366; width: 6px; height: 10px; border-radius: 50%; }
+.confetti-2 { background: #ffb84d; width: 10px; height: 8px; border-radius: 2px; }
+.confetti-3 { background: #74d7ff; width: 7px; height: 14px; border-radius: 1px; }
+.confetti-4 { background: #ff5c69; width: 12px; height: 6px; border-radius: 50%; }
+.confetti-5 { background: #32cd32; width: 9px; height: 11px; border-radius: 2px; }
+
+@keyframes confetti-fall {
+  0% { transform: translateY(0) translateX(0) rotate(0deg) scale(0); opacity: 0; }
+  10% { opacity: 1; transform: translateY(10vh) translateX(calc(var(--drift) * 0.1)) rotate(calc(var(--spin) * 0.1)) scale(1); }
+  100% { transform: translateY(105vh) translateX(var(--drift)) rotate(var(--spin)) scale(0.5); opacity: 0; }
+}
+
+/* Defeat vignette */
+.defeat-vignette {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(255, 20, 20, 0.25) 100%);
+  animation: vignette-pulse 3s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 99;
+}
+
+@keyframes vignette-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.8; }
+}
+
+/* Turn indicator bar */
+.turn-indicator-bar {
+  height: 3px;
+  margin-top: 6px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, #74d7ff, transparent);
+  animation: turn-bar-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes turn-bar-pulse {
+  0%, 100% { opacity: 0.4; transform: scaleX(0.7); }
+  50% { opacity: 1; transform: scaleX(1); }
 }
 
 @media (max-width: 768px) {

@@ -62,7 +62,13 @@ const GameBoard = ({ board, onCellClick, isOwnBoard, isMyTurn, gameFinished }: G
                   )}
                   <div className="hit-marker">
                     <div className="explosion"></div>
+                    <div className="shockwave-ring small"></div>
                     <div className="fire">🔥</div>
+                  </div>
+                  <div className="hit-particles">
+                    {[0,1,2,3,4,5,6,7].map(i => (
+                      <div key={i} className={`particle particle-${i}`} />
+                    ))}
                   </div>
                 </>
               )}
@@ -75,13 +81,29 @@ const GameBoard = ({ board, onCellClick, isOwnBoard, isMyTurn, gameFinished }: G
                   )}
                   <div className="hit-marker">
                     <div className="explosion big"></div>
+                    <div className="shockwave-ring"></div>
                     <div className="fire big">💥</div>
+                  </div>
+                  <div className="hit-particles big">
+                    {[0,1,2,3,4,5,6,7,8,9,10,11].map(i => (
+                      <div key={i} className={`particle particle-${i}`} />
+                    ))}
                   </div>
                 </>
               )}
               {(cell === 'miss' as CellStatus) && (
                 <div className="miss-marker">
                   <div className="splash"></div>
+                  <div className="water-ripples">
+                    <div className="ripple ripple-1" />
+                    <div className="ripple ripple-2" />
+                    <div className="ripple ripple-3" />
+                  </div>
+                  <div className="splash-drops">
+                    {[0,1,2,3,4].map(i => (
+                      <div key={i} className={`drop drop-${i}`} />
+                    ))}
+                  </div>
                   💧
                 </div>
               )}

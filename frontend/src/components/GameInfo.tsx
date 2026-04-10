@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { GameState } from '.././reducers/gameReducer';
 import { ConnectionStatus } from '../hooks/UseGameWebSocket';
 import './GameInfo.css';
@@ -18,6 +18,17 @@ interface GameInfoProps {
 const GameInfo = ({ gameState, playerId, currentTurn, message, winner, gameId, connectionStatus, sessionExpired, onContinueGame }: GameInfoProps) => {
   const isMyTurn = playerId === currentTurn;
   const [copied, setCopied] = useState(false);
+
+  const confettiPieces = useMemo(() =>
+    Array.from({ length: 50 }, () => ({
+      '--x': `${Math.random() * 100}%`,
+      '--delay': `${Math.random() * 2}s`,
+      '--duration': `${2.5 + Math.random() * 2.5}s`,
+      '--drift': `${(Math.random() - 0.5) * 300}px`,
+      '--spin': `${Math.random() * 1440 - 720}deg`,
+    } as React.CSSProperties)),
+    [winner]
+  );
 
   const copyGameLink = () => {
     if (gameId) {
@@ -53,6 +64,7 @@ const GameInfo = ({ gameState, playerId, currentTurn, message, winner, gameId, c
             <span className={`turn ${isMyTurn ? 'your-turn' : 'opponent-turn'}`}>
               {isMyTurn ? '🎯 Your Turn!' : '⏱️ Opponent\'s Turn'}
             </span>
+            {isMyTurn && <div className="turn-indicator-bar" />}
           </div>
         )}
 
@@ -94,6 +106,18 @@ const GameInfo = ({ gameState, playerId, currentTurn, message, winner, gameId, c
         <div className="message-box">
           <p>{message}</p>
         </div>
+      )}
+
+      {winner === playerId && (
+        <div className="confetti-container">
+          {confettiPieces.map((piece, i) => (
+            <div key={i} className={`confetti confetti-${i % 6}`} style={piece} />
+          ))}
+        </div>
+      )}
+
+      {winner && winner !== playerId && (
+        <div className="defeat-vignette" />
       )}
     </div>
   );

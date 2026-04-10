@@ -479,6 +479,12 @@ h1::before {
   gap: 40px;
   margin-top: 30px;
   flex-wrap: wrap;
+  animation: boards-reveal 0.5s ease-out;
+}
+
+@keyframes boards-reveal {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
 }
 
 .board-container {
@@ -487,9 +493,20 @@ h1::before {
   border-radius: 12px;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(0, 210, 255, 0.2);
-  box-shadow: 
+  box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.4),
     inset 0 0 20px rgba(0, 210, 255, 0.05);
+  animation: board-entrance 0.7s ease-out both;
+}
+
+.board-container:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+@keyframes board-entrance {
+  0% { opacity: 0; transform: translateY(30px) scale(0.95); }
+  60% { transform: translateY(-5px) scale(1.01); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .board-container h3 {
@@ -497,6 +514,52 @@ h1::before {
   font-size: 1.5rem;
   color: #74d7ff;
   text-shadow: 0 0 8px rgba(116, 215, 255, 0.4);
+}
+
+/* ── Battle start flash ── */
+
+.battle-flash {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 15, 40, 0.85);
+  z-index: 1000;
+  animation: battle-flash-bg 1.8s ease-out forwards;
+  pointer-events: none;
+}
+
+.battle-flash span {
+  font-size: clamp(2.5rem, 10vw, 4rem);
+  font-weight: 900;
+  letter-spacing: 14px;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #ff3366 0%, #ff5c69 30%, #ffb84d 60%, #00d2ff 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: battle-flash-text 1.8s ease-out;
+  filter: drop-shadow(0 0 30px rgba(255, 92, 105, 0.6));
+}
+
+@keyframes battle-flash-bg {
+  0% { opacity: 0; }
+  15% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes battle-flash-text {
+  0% { transform: scale(0.3); opacity: 0; letter-spacing: 40px; }
+  20% { transform: scale(1.15); opacity: 1; }
+  40% { transform: scale(0.95); letter-spacing: 14px; }
+  60% { transform: scale(1.02); }
+  100% { transform: scale(1); opacity: 0; }
 }
 
 /* ── Waiting for opponent overlay ── */
