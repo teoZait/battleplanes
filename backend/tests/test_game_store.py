@@ -10,7 +10,7 @@ import json
 import pytest
 
 from domain.models import Game, Plane
-from domain.value_objects import GameState, GameMode, PlaneOrientation
+from domain.value_objects import GameState, GameMode, PlaneOrientation, PlayerID
 from infrastructure.game_store import GameStore
 from application.game_service import GameService
 
@@ -65,18 +65,18 @@ def _make_playing_game(game_id: str = "test-123") -> Game:
     """Create a Game that has advanced to the PLAYING state."""
     game = Game(game_id)
     # Simulate two players joining
-    game.players["player1"] = "ws-stub"
-    game.players["player2"] = "ws-stub"
+    game.players[PlayerID.PLAYER1] = "ws-stub"
+    game.players[PlayerID.PLAYER2] = "ws-stub"
     game.state = GameState.PLACING
 
-    for pid in ("player1", "player2"):
+    for pid in PlayerID.both():
         game.place_plane(pid, PLANE_1_DATA)
         game.place_plane(pid, PLANE_2_DATA)
         game.mark_player_ready(pid)
 
     game.start_game()
     # Clear player refs (as Redis would)
-    game.players = {"player1": None, "player2": None}
+    game.players = PlayerID.make_dict(lambda: None)
     return game
 
 
@@ -93,7 +93,7 @@ class TestSerialisation:
 
         assert restored.id == original.id
         assert restored.state == GameState.WAITING
-        assert restored.current_turn == "player1"
+        assert restored.current_turn == PlayerID.PLAYER1
         assert restored.boards == original.boards
 
     def test_playing_game_round_trip(self):
@@ -103,17 +103,17 @@ class TestSerialisation:
 
         assert restored.id == original.id
         assert restored.state == GameState.PLAYING
-        assert restored.ready == {"player1": True, "player2": True}
-        assert len(restored.planes["player1"]) == 2
-        assert len(restored.planes["player2"]) == 2
+        assert restored.ready == {PlayerID.PLAYER1: True, PlayerID.PLAYER2: True}
+        assert len(restored.planes[PlayerID.PLAYER1]) == 2
+        assert len(restored.planes[PlayerID.PLAYER2]) == 2
 
     def test_planes_preserve_fields(self):
         original = _make_playing_game()
-        plane = original.planes["player1"][0]
+        plane = original.planes[PlayerID.PLAYER1][0]
 
         data = GameStore._serialize(original)
         restored = GameStore._deserialize(data)
-        rp = restored.planes["player1"][0]
+        rp = restored.planes[PlayerID.PLAYER1][0]
 
         assert rp.positions == plane.positions
         assert rp.head_position == plane.head_position
@@ -122,13 +122,13 @@ class TestSerialisation:
 
     def test_board_damage_preserved(self):
         game = _make_playing_game()
-        game.attack("player1", 2, 0)  # head_hit on player2's cockpit
+        game.attack(PlayerID.PLAYER1, 2, 0)  # head_hit on player2's cockpit
 
         data = GameStore._serialize(game)
         restored = GameStore._deserialize(data)
 
-        assert restored.boards["player2"][0][2] == "head_hit"
-        destroyed = [p for p in restored.planes["player2"] if p.is_destroyed]
+        assert restored.boards[PlayerID.PLAYER2][0][2] == "head_hit"
+        destroyed = [p for p in restored.planes[PlayerID.PLAYER2] if p.is_destroyed]
         assert len(destroyed) == 1
 
     def test_json_round_trip(self):
@@ -138,25 +138,25 @@ class TestSerialisation:
         restored = GameStore._deserialize(json.loads(raw))
 
         assert restored.state == GameState.PLAYING
-        assert len(restored.planes["player1"]) == 2
+        assert len(restored.planes[PlayerID.PLAYER1]) == 2
 
     def test_players_are_none_after_restore(self):
         game = _make_playing_game()
         data = GameStore._serialize(game)
         restored = GameStore._deserialize(data)
 
-        assert restored.players["player1"] is None
-        assert restored.players["player2"] is None
+        assert restored.players[PlayerID.PLAYER1] is None
+        assert restored.players[PlayerID.PLAYER2] is None
 
     def test_session_tokens_round_trip(self):
         """Session tokens should survive serialisation."""
         game = Game("token-test")
-        game.session_tokens = {"player1": "tok-abc", "player2": "tok-xyz"}
+        game.session_tokens = {PlayerID.PLAYER1: "tok-abc", PlayerID.PLAYER2: "tok-xyz"}
 
         data = GameStore._serialize(game)
         restored = GameStore._deserialize(data)
 
-        assert restored.session_tokens == {"player1": "tok-abc", "player2": "tok-xyz"}
+        assert restored.session_tokens == {PlayerID.PLAYER1: "tok-abc", PlayerID.PLAYER2: "tok-xyz"}
 
     def test_timestamps_round_trip(self):
         """created_at and finished_at should survive serialisation."""
@@ -183,7 +183,7 @@ class TestSerialisation:
         }
         restored = GameStore._deserialize(data)
         assert restored.id == "old-game"
-        assert restored.session_tokens == {"player1": None, "player2": None}
+        assert restored.session_tokens == {PlayerID.PLAYER1: None, PlayerID.PLAYER2: None}
         assert isinstance(restored.created_at, float)
         assert restored.finished_at is None
         assert restored.mode == GameMode.CLASSIC  # backward compat default
@@ -199,14 +199,14 @@ class TestSerialisation:
     def test_elite_mode_preserves_plane_count(self):
         """Elite game with 3 planes should survive round-trip."""
         game = Game("mode-3planes", mode=GameMode.ELITE)
-        game.place_plane("player1", PLANE_1_DATA)
-        game.place_plane("player1", PLANE_2_DATA)
-        game.place_plane("player1", {"head_x": 5, "head_y": 9, "orientation": "down"})
+        game.place_plane(PlayerID.PLAYER1, PLANE_1_DATA)
+        game.place_plane(PlayerID.PLAYER1, PLANE_2_DATA)
+        game.place_plane(PlayerID.PLAYER1, {"head_x": 5, "head_y": 9, "orientation": "down"})
 
         data = GameStore._serialize(game)
         restored = GameStore._deserialize(data)
         assert restored.mode == GameMode.ELITE
-        assert len(restored.planes["player1"]) == 3
+        assert len(restored.planes[PlayerID.PLAYER1]) == 3
 
 
 # ---------------------------------------------------------------------------
@@ -338,9 +338,9 @@ class TestServicePersistence:
         await service.handle_player_connection(gid, ws1)
         await service.handle_player_connection(gid, ws2)
 
-        await service.handle_plane_placement(gid, "player1", PLANE_1_DATA)
+        await service.handle_plane_placement(gid, PlayerID.PLAYER1, PLANE_1_DATA)
         loaded = await store.load(gid)
-        assert len(loaded.planes["player1"]) == 1
+        assert len(loaded.planes[PlayerID.PLAYER1]) == 1
 
     @pytest.mark.asyncio
     async def test_attack_persists(self):
@@ -350,14 +350,14 @@ class TestServicePersistence:
         await service.handle_player_connection(gid, ws1)
         await service.handle_player_connection(gid, ws2)
 
-        for pid in ("player1", "player2"):
+        for pid in PlayerID.both():
             await service.handle_plane_placement(gid, pid, PLANE_1_DATA)
             await service.handle_plane_placement(gid, pid, PLANE_2_DATA)
 
-        await service.handle_attack(gid, "player1", 5, 5)
+        await service.handle_attack(gid, PlayerID.PLAYER1, 5, 5)
         loaded = await store.load(gid)
-        assert loaded.boards["player2"][5][5] == "miss"
-        assert loaded.current_turn == "player2"
+        assert loaded.boards[PlayerID.PLAYER2][5][5] == "miss"
+        assert loaded.current_turn == PlayerID.PLAYER2
 
     @pytest.mark.asyncio
     async def test_disconnect_persists(self):
@@ -367,9 +367,9 @@ class TestServicePersistence:
         await service.handle_player_connection(gid, ws1)
         await service.handle_player_connection(gid, ws2)
 
-        await service.handle_player_disconnection(gid, "player1")
+        await service.handle_player_disconnection(gid, PlayerID.PLAYER1)
         loaded = await store.load(gid)
-        assert loaded.players["player1"] is None
+        assert loaded.players[PlayerID.PLAYER1] is None
 
     @pytest.mark.asyncio
     async def test_restore_on_startup(self):

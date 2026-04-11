@@ -1,4 +1,4 @@
-import { CellStatus, ServerMessage } from '../hooks/UseGameWebSocket';
+import { CellStatus, ServerMessage, PLAYER1 } from '../hooks/UseGameWebSocket';
 
 // Helper to convert numeric coordinates to proper labels (e.g., x=3, y=2 -> "C4")
 // In the grid: board[y][x], where y is row index (A-J) and x is column index (1-10)
@@ -38,7 +38,7 @@ export const createEmptyBoard = (): CellStatus[][] =>
 export const initialGameState: GameUIState = {
   gameState: 'waiting',
   playerId: null,
-  currentTurn: 'player1',
+  currentTurn: PLAYER1,
   ownBoard: createEmptyBoard(),
   opponentBoard: createEmptyBoard(),
   message: '',

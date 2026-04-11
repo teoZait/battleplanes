@@ -38,3 +38,22 @@ class GameState(str, Enum):
     PLACING = "placing"
     PLAYING = "playing"
     FINISHED = "finished"
+
+
+class PlayerID(str, Enum):
+    """Identifies a player slot in a game"""
+    PLAYER1 = "player1"
+    PLAYER2 = "player2"
+
+    @property
+    def opponent(self) -> "PlayerID":
+        return PlayerID.PLAYER2 if self == PlayerID.PLAYER1 else PlayerID.PLAYER1
+
+    @classmethod
+    def both(cls) -> tuple["PlayerID", "PlayerID"]:
+        return (cls.PLAYER1, cls.PLAYER2)
+
+    @classmethod
+    def make_dict(cls, default_factory):
+        """Create a {PLAYER1: ..., PLAYER2: ...} dict using a factory callable."""
+        return {pid: default_factory() for pid in cls.both()}

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import FinishedGameView from '../components/FinishedGameView';
 import type { FinishedGameData } from '../components/FinishedGameView';
-import type { CellStatus } from '../hooks/UseGameWebSocket';
+import { type CellStatus, PLAYER1, PLAYER2 } from '../hooks/UseGameWebSocket';
 
 afterEach(() => cleanup());
 
@@ -11,7 +11,7 @@ const createBoard = (): CellStatus[][] =>
     Array.from({ length: 10 }, () => 'empty' as CellStatus)
   );
 
-const makeData = (winner = 'player1', mode = 'classic'): FinishedGameData => {
+const makeData = (winner = PLAYER1 as string, mode = 'classic'): FinishedGameData => {
   const p1 = createBoard();
   p1[0][2] = 'head_hit';
   p1[1][0] = 'plane';
@@ -24,17 +24,17 @@ const makeData = (winner = 'player1', mode = 'classic'): FinishedGameData => {
 describe('FinishedGameView', () => {
 
   it('should display player 1 as winner', () => {
-    render(<FinishedGameView data={makeData('player1')} onNewGame={() => {}} />);
+    render(<FinishedGameView data={makeData(PLAYER1)} onNewGame={() => {}} />);
     expect(screen.getByText('Player 1 wins!')).toBeTruthy();
   });
 
   it('should display player 2 as winner', () => {
-    render(<FinishedGameView data={makeData('player2')} onNewGame={() => {}} />);
+    render(<FinishedGameView data={makeData(PLAYER2)} onNewGame={() => {}} />);
     expect(screen.getByText('Player 2 wins!')).toBeTruthy();
   });
 
   it('should show trophy emoji only on winner board header', () => {
-    render(<FinishedGameView data={makeData('player1')} onNewGame={() => {}} />);
+    render(<FinishedGameView data={makeData(PLAYER1)} onNewGame={() => {}} />);
     expect(screen.getByText('🏆 Player 1')).toBeTruthy();
     // Non-winner should not have trophy
     expect(screen.getByText('Player 2')).toBeTruthy();

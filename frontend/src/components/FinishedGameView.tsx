@@ -1,14 +1,11 @@
-import { CellStatus } from '../hooks/UseGameWebSocket';
+import { CellStatus, PlayerID, PLAYER1, PLAYER2 } from '../hooks/UseGameWebSocket';
 import GameBoard from './GameBoard';
 import ZoomableBoard from './ZoomableBoard';
 import './FinishedGameView.css';
 
 export interface FinishedGameData {
   winner: string;
-  boards: {
-    player1: CellStatus[][];
-    player2: CellStatus[][];
-  };
+  boards: Record<PlayerID, CellStatus[][]>;
   mode: string;
 }
 
@@ -18,7 +15,7 @@ interface FinishedGameViewProps {
 }
 
 const FinishedGameView = ({ data, onNewGame }: FinishedGameViewProps) => {
-  const winnerLabel = data.winner === 'player1' ? 'Player 1' : 'Player 2';
+  const winnerLabel = data.winner === PLAYER1 ? 'Player 1' : 'Player 2';
 
   return (
     <div className="finished-game-view">
@@ -29,15 +26,15 @@ const FinishedGameView = ({ data, onNewGame }: FinishedGameViewProps) => {
 
       <div className="game-boards">
         <div className="board-container">
-          <h3>{data.winner === 'player1' ? '🏆 Player 1' : 'Player 1'}</h3>
+          <h3>{data.winner === PLAYER1 ? '🏆 Player 1' : 'Player 1'}</h3>
           <ZoomableBoard>
-            <GameBoard board={data.boards.player1} onCellClick={() => {}} isOwnBoard gameFinished />
+            <GameBoard board={data.boards[PLAYER1]} onCellClick={() => {}} isOwnBoard gameFinished />
           </ZoomableBoard>
         </div>
         <div className="board-container">
-          <h3>{data.winner === 'player2' ? '🏆 Player 2' : 'Player 2'}</h3>
+          <h3>{data.winner === PLAYER2 ? '🏆 Player 2' : 'Player 2'}</h3>
           <ZoomableBoard>
-            <GameBoard board={data.boards.player2} onCellClick={() => {}} isOwnBoard={false} gameFinished />
+            <GameBoard board={data.boards[PLAYER2]} onCellClick={() => {}} isOwnBoard={false} gameFinished />
           </ZoomableBoard>
         </div>
       </div>

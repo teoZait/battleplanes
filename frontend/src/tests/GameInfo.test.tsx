@@ -2,14 +2,14 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, act } from '@testing-library/react';
 import GameInfo from '../components/GameInfo';
 import type { GameState } from '../reducers/gameReducer';
-import type { ConnectionStatus } from '../hooks/UseGameWebSocket';
+import { type ConnectionStatus, PLAYER1, PLAYER2 } from '../hooks/UseGameWebSocket';
 
 afterEach(() => cleanup());
 
 const defaultProps = {
   gameState: 'playing' as GameState,
-  playerId: 'player1',
-  currentTurn: 'player1',
+  playerId: PLAYER1,
+  currentTurn: PLAYER1,
   message: '',
   winner: null as string | null,
   gameId: 'test-game-id',
@@ -74,7 +74,7 @@ describe('GameInfo - Existing Functionality Preserved', () => {
 
   it('should show "Your Turn" when it is the player\'s turn', () => {
     render(
-      <GameInfo {...defaultProps} playerId="player1" currentTurn="player1" gameState="playing" />
+      <GameInfo {...defaultProps} playerId={PLAYER1} currentTurn={PLAYER1} gameState="playing" />
     );
 
     expect(screen.getByText(/Your Turn/)).toBeTruthy();
@@ -82,7 +82,7 @@ describe('GameInfo - Existing Functionality Preserved', () => {
 
   it('should show "Opponent\'s Turn" when it is not the player\'s turn', () => {
     render(
-      <GameInfo {...defaultProps} playerId="player1" currentTurn="player2" gameState="playing" />
+      <GameInfo {...defaultProps} playerId={PLAYER1} currentTurn={PLAYER2} gameState="playing" />
     );
 
     expect(screen.getByText(/Opponent's Turn/)).toBeTruthy();
@@ -90,7 +90,7 @@ describe('GameInfo - Existing Functionality Preserved', () => {
 
   it('should show winner message when player wins', () => {
     render(
-      <GameInfo {...defaultProps} gameState="finished" winner="player1" playerId="player1" />
+      <GameInfo {...defaultProps} gameState="finished" winner={PLAYER1} playerId={PLAYER1} />
     );
 
     expect(screen.getByText(/You Won/)).toBeTruthy();
@@ -98,7 +98,7 @@ describe('GameInfo - Existing Functionality Preserved', () => {
 
   it('should show loser message when player loses', () => {
     render(
-      <GameInfo {...defaultProps} gameState="finished" winner="player2" playerId="player1" />
+      <GameInfo {...defaultProps} gameState="finished" winner={PLAYER2} playerId={PLAYER1} />
     );
 
     expect(screen.getByText(/You Lost/)).toBeTruthy();

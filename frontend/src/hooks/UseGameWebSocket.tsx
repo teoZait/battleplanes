@@ -2,6 +2,10 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 
 export type CellStatus = 'empty' | 'plane' | 'head' | 'hit' | 'miss' | 'head_hit';
 
+export type PlayerID = 'player1' | 'player2';
+export const PLAYER1: PlayerID = 'player1';
+export const PLAYER2: PlayerID = 'player2';
+
 export type ServerMessage =
   | { type: 'player_assigned'; player_id: string; game_state: 'waiting' | 'placing' | 'playing' | 'finished'; session_token?: string; mode?: string; max_planes?: number }
   | { type: 'game_ready'; message: string }

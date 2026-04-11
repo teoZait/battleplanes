@@ -4,7 +4,7 @@ Domain Models - Core entities
 import time
 from typing import List, Tuple, Dict, Optional
 from pydantic import BaseModel
-from .value_objects import PlaneOrientation, GameState, GameMode, CellStatus
+from .value_objects import PlaneOrientation, GameState, GameMode, CellStatus, PlayerID
 from .game_logic import get_plane_positions, is_valid_placement
 
 
@@ -42,21 +42,20 @@ class Game:
     def __init__(self, game_id: str, mode: GameMode = GameMode.CLASSIC):
         self.id = game_id
         self.mode = mode
-        self.players: Dict[str, Optional[object]] = {"player1": None, "player2": None}
-        self.boards: Dict[str, List[List[str]]] = {
-            "player1": [["empty" for _ in range(10)] for _ in range(10)],
-            "player2": [["empty" for _ in range(10)] for _ in range(10)]
-        }
-        self.planes: Dict[str, List[Plane]] = {"player1": [], "player2": []}
+        self.players: Dict[str, Optional[object]] = PlayerID.make_dict(lambda: None)
+        self.boards: Dict[str, List[List[str]]] = PlayerID.make_dict(
+            lambda: [["empty" for _ in range(10)] for _ in range(10)]
+        )
+        self.planes: Dict[str, List[Plane]] = PlayerID.make_dict(lambda: [])
         self.state = GameState.WAITING
-        self.current_turn = "player1"
-        self.ready: Dict[str, bool] = {"player1": False, "player2": False}
-        self.session_tokens: Dict[str, Optional[str]] = {"player1": None, "player2": None}
+        self.current_turn: str = PlayerID.PLAYER1
+        self.ready: Dict[str, bool] = PlayerID.make_dict(lambda: False)
+        self.session_tokens: Dict[str, Optional[str]] = PlayerID.make_dict(lambda: None)
         self.created_at: float = time.time()
         self.finished_at: Optional[float] = None
         self.rematch_requested_by: Optional[str] = None
         self.rematch_game_id: Optional[str] = None
-        self.disconnected_at: Dict[str, Optional[float]] = {"player1": None, "player2": None}
+        self.disconnected_at: Dict[str, Optional[float]] = PlayerID.make_dict(lambda: None)
 
     def place_plane(self, player_id: str, plane_data: Dict) -> Tuple[bool, str]:
         """
@@ -107,7 +106,7 @@ class Game:
         Returns:
             "hit", "head_hit", "miss", "already_attacked", or None (invalid)
         """
-        defender = "player2" if attacker == "player1" else "player1"
+        defender = PlayerID(attacker).opponent
         
         # Validate bounds
         if x < 0 or x >= 10 or y < 0 or y >= 10:
@@ -138,17 +137,17 @@ class Game:
             Winner player_id or None
         """
         max_planes = self.mode.plane_count
-        for player_id in ["player1", "player2"]:
+        for player_id in PlayerID.both():
             if len(self.planes[player_id]) == max_planes:  # Player has placed all planes
                 destroyed_count = sum(1 for plane in self.planes[player_id] if plane.is_destroyed)
                 if destroyed_count == max_planes:
                     # This player lost, return opponent as winner
-                    return "player2" if player_id == "player1" else "player1"
+                    return player_id.opponent
         return None
 
     def get_masked_board(self, player_id: str) -> List[List[str]]:
         """Return opponent's board with planes hidden"""
-        opponent = "player2" if player_id == "player1" else "player1"
+        opponent = PlayerID(player_id).opponent
         masked = []
         
         for row in self.boards[opponent]:
@@ -169,7 +168,7 @@ class Game:
     
     def are_both_players_ready(self) -> bool:
         """Check if both players are ready to start"""
-        return self.ready["player1"] and self.ready["player2"]
+        return all(self.ready[pid] for pid in PlayerID.both())
     
     def start_game(self):
         """Transition to playing state"""
@@ -178,7 +177,7 @@ class Game:
     
     def switch_turn(self):
         """Switch to the other player's turn"""
-        self.current_turn = "player2" if self.current_turn == "player1" else "player1"
+        self.current_turn = PlayerID(self.current_turn).opponent
     
     def finish_game(self):
         """Mark game as finished"""

@@ -1,6 +1,6 @@
 import pytest
 from domain.game_logic import get_plane_positions
-from domain.value_objects import PlaneOrientation, GameMode
+from domain.value_objects import PlaneOrientation, GameMode, PlayerID
 from domain.models import Game
 
 
@@ -98,38 +98,38 @@ class TestGamePlacement:
         """Should successfully place a valid plane"""
         game = Game("test-game-1")
         
-        success, message = game.place_plane("player1", {
+        success, message = game.place_plane(PlayerID.PLAYER1, {
             "head_x": 5,
             "head_y": 2,
             "orientation": "up"
         })
         
         assert success is True, "Valid plane placement should succeed"
-        assert len(game.planes["player1"]) == 1, "Should have 1 plane placed"
+        assert len(game.planes[PlayerID.PLAYER1]) == 1, "Should have 1 plane placed"
     
     def test_cannot_place_more_than_2_planes(self):
         """Should reject placement of more than 2 planes"""
         game = Game("test-game-2")
         
         # Place first plane
-        game.place_plane("player1", {"head_x": 5, "head_y": 2, "orientation": "up"})
+        game.place_plane(PlayerID.PLAYER1, {"head_x": 5, "head_y": 2, "orientation": "up"})
         # Place second plane
-        game.place_plane("player1", {"head_x": 5, "head_y": 9, "orientation": "down"})
+        game.place_plane(PlayerID.PLAYER1, {"head_x": 5, "head_y": 9, "orientation": "down"})
         # Try to place third plane
-        success, message = game.place_plane("player1", {"head_x": 3, "head_y": 4, "orientation": "right"})
+        success, message = game.place_plane(PlayerID.PLAYER1, {"head_x": 3, "head_y": 4, "orientation": "right"})
         
         assert success is False, "Should not allow more than 2 planes"
         assert "Already placed 2 planes" in message
-        assert len(game.planes["player1"]) == 2, "Should still have only 2 planes"
+        assert len(game.planes[PlayerID.PLAYER1]) == 2, "Should still have only 2 planes"
     
     def test_cannot_place_overlapping_planes(self):
         """Should reject overlapping plane placement"""
         game = Game("test-game-3")
         
         # Place first plane
-        game.place_plane("player1", {"head_x": 5, "head_y": 2, "orientation": "up"})
+        game.place_plane(PlayerID.PLAYER1, {"head_x": 5, "head_y": 2, "orientation": "up"})
         # Try to place overlapping plane
-        success, message = game.place_plane("player1", {"head_x": 5, "head_y": 3, "orientation": "up"})
+        success, message = game.place_plane(PlayerID.PLAYER1, {"head_x": 5, "head_y": 3, "orientation": "up"})
         
         assert success is False, "Should reject overlapping planes"
         assert "overlap" in message.lower()
@@ -139,7 +139,7 @@ class TestGamePlacement:
         game = Game("test-game-4")
         
         # Try to place plane too close to top edge (UP orientation needs space below)
-        success, message = game.place_plane("player1", {"head_x": 5, "head_y": 8, "orientation": "up"})
+        success, message = game.place_plane(PlayerID.PLAYER1, {"head_x": 5, "head_y": 8, "orientation": "up"})
         
         assert success is False, "Should reject out of bounds placement"
         assert "out of bounds" in message.lower()
@@ -148,17 +148,17 @@ class TestGamePlacement:
         """Board should be updated with plane positions"""
         game = Game("test-game-5")
         
-        game.place_plane("player1", {"head_x": 5, "head_y": 2, "orientation": "up"})
+        game.place_plane(PlayerID.PLAYER1, {"head_x": 5, "head_y": 2, "orientation": "up"})
         
         # Check head is marked
-        assert game.boards["player1"][2][5] == "head", "Head should be marked on board"
+        assert game.boards[PlayerID.PLAYER1][2][5] == "head", "Head should be marked on board"
         
         # Check wings are marked
-        assert game.boards["player1"][3][3] == "plane", "Wing should be marked"
-        assert game.boards["player1"][3][7] == "plane", "Wing should be marked"
+        assert game.boards[PlayerID.PLAYER1][3][3] == "plane", "Wing should be marked"
+        assert game.boards[PlayerID.PLAYER1][3][7] == "plane", "Wing should be marked"
         
         # Check body is marked
-        assert game.boards["player1"][4][5] == "plane", "Body should be marked"
+        assert game.boards[PlayerID.PLAYER1][4][5] == "plane", "Body should be marked"
 
 
 class TestGameAttacks:
@@ -167,52 +167,52 @@ class TestGameAttacks:
     def test_attack_body_cell(self):
         """Attacking plane body should return 'hit' but not destroy plane"""
         game = Game("test-game-6")
-        game.planes["player1"] = []  # Reset
-        game.planes["player2"] = []
+        game.planes[PlayerID.PLAYER1] = []  # Reset
+        game.planes[PlayerID.PLAYER2] = []
         
         # Place plane for player2
-        game.place_plane("player2", {"head_x": 5, "head_y": 2, "orientation": "up"})
+        game.place_plane(PlayerID.PLAYER2, {"head_x": 5, "head_y": 2, "orientation": "up"})
         
         # Player1 attacks plane body
-        result = game.attack("player1", 5, 4)  # Body position
+        result = game.attack(PlayerID.PLAYER1, 5, 4)  # Body position
         
         assert result == "hit", "Body hit should return 'hit'"
-        assert game.boards["player2"][4][5] == "hit", "Board should show hit"
-        assert game.planes["player2"][0].is_destroyed is False, "Plane should NOT be destroyed"
+        assert game.boards[PlayerID.PLAYER2][4][5] == "hit", "Board should show hit"
+        assert game.planes[PlayerID.PLAYER2][0].is_destroyed is False, "Plane should NOT be destroyed"
     
     def test_attack_head_cell(self):
         """Attacking plane head should return 'head_hit' and destroy plane"""
         game = Game("test-game-7")
-        game.planes["player1"] = []
-        game.planes["player2"] = []
+        game.planes[PlayerID.PLAYER1] = []
+        game.planes[PlayerID.PLAYER2] = []
         
         # Place plane for player2
-        game.place_plane("player2", {"head_x": 5, "head_y": 2, "orientation": "up"})
+        game.place_plane(PlayerID.PLAYER2, {"head_x": 5, "head_y": 2, "orientation": "up"})
         
         # Player1 attacks plane head
-        result = game.attack("player1", 5, 2)  # Head position
+        result = game.attack(PlayerID.PLAYER1, 5, 2)  # Head position
         
         assert result == "head_hit", "Head hit should return 'head_hit'"
-        assert game.boards["player2"][2][5] == "head_hit", "Board should show head_hit"
-        assert game.planes["player2"][0].is_destroyed is True, "Plane SHOULD be destroyed"
+        assert game.boards[PlayerID.PLAYER2][2][5] == "head_hit", "Board should show head_hit"
+        assert game.planes[PlayerID.PLAYER2][0].is_destroyed is True, "Plane SHOULD be destroyed"
     
     def test_attack_empty_cell(self):
         """Attacking empty cell should return 'miss'"""
         game = Game("test-game-8")
         
-        result = game.attack("player1", 0, 0)
+        result = game.attack(PlayerID.PLAYER1, 0, 0)
         
         assert result == "miss", "Empty cell should return 'miss'"
-        assert game.boards["player2"][0][0] == "miss", "Board should show miss"
+        assert game.boards[PlayerID.PLAYER2][0][0] == "miss", "Board should show miss"
     
     def test_attack_already_attacked_cell(self):
         """Attacking same cell twice should return 'already_attacked'"""
         game = Game("test-game-9")
         
         # First attack
-        game.attack("player1", 0, 0)
+        game.attack(PlayerID.PLAYER1, 0, 0)
         # Second attack on same cell
-        result = game.attack("player1", 0, 0)
+        result = game.attack(PlayerID.PLAYER1, 0, 0)
         
         assert result == "already_attacked", "Should reject repeated attack"
     
@@ -220,10 +220,10 @@ class TestGameAttacks:
         """Attacking out of bounds should return None"""
         game = Game("test-game-10")
         
-        result = game.attack("player1", 10, 10)
+        result = game.attack(PlayerID.PLAYER1, 10, 10)
         assert result is None, "Out of bounds attack should return None"
         
-        result = game.attack("player1", -1, 5)
+        result = game.attack(PlayerID.PLAYER1, -1, 5)
         assert result is None, "Negative coordinate attack should return None"
 
 
@@ -233,14 +233,14 @@ class TestWinCondition:
     def test_no_winner_at_start(self):
         """Game should have no winner initially"""
         game = Game("test-game-11")
-        game.planes["player1"] = []
-        game.planes["player2"] = []
+        game.planes[PlayerID.PLAYER1] = []
+        game.planes[PlayerID.PLAYER2] = []
         
         # Place planes
-        game.place_plane("player1", {"head_x": 5, "head_y": 2, "orientation": "up"})
-        game.place_plane("player1", {"head_x": 2, "head_y": 7, "orientation": "left"})
-        game.place_plane("player2", {"head_x": 5, "head_y": 2, "orientation": "up"})
-        game.place_plane("player2", {"head_x": 2, "head_y": 7, "orientation": "left"})
+        game.place_plane(PlayerID.PLAYER1, {"head_x": 5, "head_y": 2, "orientation": "up"})
+        game.place_plane(PlayerID.PLAYER1, {"head_x": 2, "head_y": 7, "orientation": "left"})
+        game.place_plane(PlayerID.PLAYER2, {"head_x": 5, "head_y": 2, "orientation": "up"})
+        game.place_plane(PlayerID.PLAYER2, {"head_x": 2, "head_y": 7, "orientation": "left"})
         
         winner = game.check_winner()
         assert winner is None, "No winner at game start"
@@ -248,15 +248,15 @@ class TestWinCondition:
     def test_winner_after_destroying_one_plane(self):
         """Destroying only one plane should not declare winner"""
         game = Game("test-game-12")
-        game.planes["player1"] = []
-        game.planes["player2"] = []
+        game.planes[PlayerID.PLAYER1] = []
+        game.planes[PlayerID.PLAYER2] = []
         
         # Place 2 planes for player2
-        game.place_plane("player2", {"head_x": 5, "head_y": 2, "orientation": "up"})
-        game.place_plane("player2", {"head_x": 2, "head_y": 7, "orientation": "left"})
+        game.place_plane(PlayerID.PLAYER2, {"head_x": 5, "head_y": 2, "orientation": "up"})
+        game.place_plane(PlayerID.PLAYER2, {"head_x": 2, "head_y": 7, "orientation": "left"})
         
         # Destroy first plane
-        game.attack("player1", 5, 2)  # Hit head
+        game.attack(PlayerID.PLAYER1, 5, 2)  # Hit head
         
         winner = game.check_winner()
         assert winner is None, "Should not have winner after destroying only 1 plane"
@@ -264,38 +264,38 @@ class TestWinCondition:
     def test_winner_after_destroying_both_planes(self):
         """Destroying both planes should declare winner"""
         game = Game("test-game-13")
-        game.planes["player1"] = []
-        game.planes["player2"] = []
+        game.planes[PlayerID.PLAYER1] = []
+        game.planes[PlayerID.PLAYER2] = []
         
         # Place 2 planes for player2
-        game.place_plane("player2", {"head_x": 5, "head_y": 2, "orientation": "up"})
-        game.place_plane("player2", {"head_x": 2, "head_y": 7, "orientation": "left"})
+        game.place_plane(PlayerID.PLAYER2, {"head_x": 5, "head_y": 2, "orientation": "up"})
+        game.place_plane(PlayerID.PLAYER2, {"head_x": 2, "head_y": 7, "orientation": "left"})
         
         # Destroy both planes
-        game.attack("player1", 5, 2)  # Hit first head
-        game.attack("player1", 2, 7)  # Hit second head
+        game.attack(PlayerID.PLAYER1, 5, 2)  # Hit first head
+        game.attack(PlayerID.PLAYER1, 2, 7)  # Hit second head
         
         winner = game.check_winner()
-        assert winner == "player1", "Player1 should win after destroying both planes"
+        assert winner == PlayerID.PLAYER1, "Player1 should win after destroying both planes"
     
     def test_correct_winner_identification(self):
         """Winner should be opponent of player who lost all planes"""
         game = Game("test-game-14")
-        game.planes["player1"] = []
-        game.planes["player2"] = []
+        game.planes[PlayerID.PLAYER1] = []
+        game.planes[PlayerID.PLAYER2] = []
         
         # Place planes for both players
-        game.place_plane("player1", {"head_x": 5, "head_y": 2, "orientation": "up"})
-        game.place_plane("player1", {"head_x": 2, "head_y": 7, "orientation": "left"})
-        game.place_plane("player2", {"head_x": 5, "head_y": 2, "orientation": "up"})
-        game.place_plane("player2", {"head_x": 2, "head_y": 7, "orientation": "left"})
+        game.place_plane(PlayerID.PLAYER1, {"head_x": 5, "head_y": 2, "orientation": "up"})
+        game.place_plane(PlayerID.PLAYER1, {"head_x": 2, "head_y": 7, "orientation": "left"})
+        game.place_plane(PlayerID.PLAYER2, {"head_x": 5, "head_y": 2, "orientation": "up"})
+        game.place_plane(PlayerID.PLAYER2, {"head_x": 2, "head_y": 7, "orientation": "left"})
         
         # Player2 destroys player1's planes
-        game.attack("player2", 5, 2)
-        game.attack("player2", 2, 7)
+        game.attack(PlayerID.PLAYER2, 5, 2)
+        game.attack(PlayerID.PLAYER2, 2, 7)
         
         winner = game.check_winner()
-        assert winner == "player2", "Player2 should win"
+        assert winner == PlayerID.PLAYER2, "Player2 should win"
 
 
 class TestBoardMasking:
@@ -304,13 +304,13 @@ class TestBoardMasking:
     def test_opponent_board_hides_planes(self):
         """Opponent's board should hide plane positions"""
         game = Game("test-game-15")
-        game.planes["player2"] = []
+        game.planes[PlayerID.PLAYER2] = []
         
         # Place plane for player2
-        game.place_plane("player2", {"head_x": 5, "head_y": 2, "orientation": "up"})
+        game.place_plane(PlayerID.PLAYER2, {"head_x": 5, "head_y": 2, "orientation": "up"})
         
         # Get masked board from player1's perspective
-        masked = game.get_masked_board("player1")
+        masked = game.get_masked_board(PlayerID.PLAYER1)
         
         # Check that plane positions show as empty
         assert masked[2][5] == "empty", "Head should be hidden"
@@ -320,17 +320,17 @@ class TestBoardMasking:
     def test_opponent_board_shows_hits(self):
         """Opponent's board should show hit and miss markers"""
         game = Game("test-game-16")
-        game.planes["player2"] = []
+        game.planes[PlayerID.PLAYER2] = []
         
         # Place plane
-        game.place_plane("player2", {"head_x": 5, "head_y": 2, "orientation": "up"})
+        game.place_plane(PlayerID.PLAYER2, {"head_x": 5, "head_y": 2, "orientation": "up"})
         
         # Attack
-        game.attack("player1", 5, 2)  # Head hit
-        game.attack("player1", 5, 4)  # Body hit
-        game.attack("player1", 0, 0)  # Miss
+        game.attack(PlayerID.PLAYER1, 5, 2)  # Head hit
+        game.attack(PlayerID.PLAYER1, 5, 4)  # Body hit
+        game.attack(PlayerID.PLAYER1, 0, 0)  # Miss
         
-        masked = game.get_masked_board("player1")
+        masked = game.get_masked_board(PlayerID.PLAYER1)
         
         assert masked[2][5] == "head_hit", "Head hit should be visible"
         assert masked[4][5] == "hit", "Body hit should be visible"
@@ -354,11 +354,11 @@ class TestGameModeReadyLogic:
                 {"head_x": 5, "head_y": 9, "orientation": "down"},
             ]
             for i in range(count):
-                game.place_plane("player1", planes[i])
-                game.mark_player_ready("player1")
+                game.place_plane(PlayerID.PLAYER1, planes[i])
+                game.mark_player_ready(PlayerID.PLAYER1)
                 if i < count - 1:
-                    assert game.ready["player1"] is False
-            assert game.ready["player1"] is True
+                    assert game.ready[PlayerID.PLAYER1] is False
+            assert game.ready[PlayerID.PLAYER1] is True
 
 
 if __name__ == "__main__":
