@@ -48,6 +48,14 @@ class GetBoardsMessage(BaseModel):
     type: Literal["get_boards"]
 
 
+class RequestRematchMessage(BaseModel):
+    type: Literal["request_rematch"]
+
+
+class AcceptRematchMessage(BaseModel):
+    type: Literal["accept_rematch"]
+
+
 class AuthMessage(BaseModel):
     """First message sent by the client after WebSocket open.
 
@@ -70,12 +78,7 @@ class CreateGameRequest(BaseModel):
         return v
 
 
-class ContinueGameRequest(BaseModel):
-    """HTTP body for POST /game/{game_id}/continue."""
-    session_token: str
-
-
-ClientMessage = Union[PlacePlaneMessage, AttackMessage, GetBoardsMessage]
+ClientMessage = Union[PlacePlaneMessage, AttackMessage, GetBoardsMessage, RequestRematchMessage, AcceptRematchMessage]
 
 
 def parse_client_message(data: dict) -> ClientMessage | None:
@@ -90,6 +93,8 @@ def parse_client_message(data: dict) -> ClientMessage | None:
         "place_plane": PlacePlaneMessage,
         "attack": AttackMessage,
         "get_boards": GetBoardsMessage,
+        "request_rematch": RequestRematchMessage,
+        "accept_rematch": AcceptRematchMessage,
     }
 
     schema = schemas.get(msg_type)

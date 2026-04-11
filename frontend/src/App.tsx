@@ -4,6 +4,7 @@ import GameBoard from './components/GameBoard';
 import PlanePlacement from './components/PlanePlacement';
 import GameInfo from './components/GameInfo';
 import ZoomableBoard from './components/ZoomableBoard';
+import FinishedGameView, { FinishedGameData } from './components/FinishedGameView';
 import { useGameWebSocket, CellStatus } from './hooks/UseGameWebSocket';
 import {
   gameReducer,
@@ -29,6 +30,8 @@ function App() {
   const [gameId, setGameId] = useState<string | null>(getGameIdFromUrl);
   const [showModeSelector, setShowModeSelector] = useState(false);
   const [state, dispatch] = useReducer(gameReducer, initialGameState);
+  const [finishedGameData, setFinishedGameData] = useState<FinishedGameData | null>(null);
+  const [rematchRequested, setRematchRequested] = useState(false);
 
   // Sync URL when gameId changes
   useEffect(() => {
@@ -43,10 +46,33 @@ function App() {
     const onPopState = () => {
       setGameId(getGameIdFromUrl());
       setShowModeSelector(false);
+      setFinishedGameData(null);
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
+
+  // Check game state via HTTP — render finished games as static artifacts
+  useEffect(() => {
+    if (!gameId) {
+      setFinishedGameData(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/game/${gameId}`);
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (!cancelled && data.state === 'finished') {
+          setFinishedGameData({ winner: data.winner, boards: data.boards, mode: data.mode });
+        }
+      } catch {
+        // HTTP check failed — proceed with WebSocket
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [gameId]);
 
   const prevGameStateRef = useRef(state.gameState);
   const [showBattleFlash, setShowBattleFlash] = useState(false);
@@ -61,9 +87,22 @@ function App() {
     prevGameStateRef.current = state.gameState;
   }, [state.gameState]);
 
+  // Don't open a WebSocket for finished games — they're static artifacts.
+  const wsGameId = finishedGameData ? null : gameId;
   const { send, connectionStatus } = useGameWebSocket({
-    gameId,
-    onMessage: dispatch,
+    gameId: wsGameId,
+    onMessage: (msg) => {
+      if (msg.type === 'rematch_started') {
+        dispatch(msg);
+        setRematchRequested(false);
+        setGameId(msg.game_id);
+        return;
+      }
+      if (msg.type === 'rematch_declined' || msg.type === 'rematch_cancelled') {
+        setRematchRequested(false);
+      }
+      dispatch(msg);
+    },
     onClose: () => {
       dispatch({ type: 'error', message: 'Disconnected from game' });
     }
@@ -131,25 +170,16 @@ function App() {
     [state, send]
   );
 
-  const handleContinueGame = useCallback(async () => {
-    if (!gameId) return;
-    const token = localStorage.getItem(`game_token_${gameId}`);
-    if (!token) return;
+  const handleNewGame = useCallback(() => {
+    setGameId(null);
+    setFinishedGameData(null);
+    setRematchRequested(false);
+  }, []);
 
-    const res = await fetch(`${API_URL}/api/game/${gameId}/continue`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_token: token }),
-    });
-    if (!res.ok) return;
-
-    const data = await res.json();
-    // Store the new session token before switching games
-    localStorage.setItem(`game_token_${data.game_id}`, data.session_token);
-    // Clear old state immediately and show transition message
-    dispatch({ type: 'game_continued', message: 'Switched to new game. Waiting for opponent to connect...' });
-    setGameId(data.game_id);
-  }, [gameId]);
+  const handleRematch = useCallback(() => {
+    send({ type: 'request_rematch' });
+    setRematchRequested(true);
+  }, [send]);
 
   return (
     <div className="App">
@@ -300,7 +330,14 @@ function App() {
         </div>
       )}
 
-      {gameId && (
+      {gameId && finishedGameData && (
+        <FinishedGameView
+          data={finishedGameData}
+          onNewGame={handleNewGame}
+        />
+      )}
+
+      {gameId && !finishedGameData && (
         <>
           <GameInfo
             gameState={state.gameState}
@@ -311,7 +348,7 @@ function App() {
             gameId={gameId}
             connectionStatus={connectionStatus}
             sessionExpired={state.sessionExpired}
-            onContinueGame={handleContinueGame}
+            onNewGame={handleNewGame}
           />
 
           <div className="game-content-wrapper">
@@ -358,6 +395,44 @@ function App() {
                         gameFinished={state.gameState === 'finished'}
                       />
                     </ZoomableBoard>
+                  </div>
+                </div>
+              )}
+
+              {state.gameState === 'finished' && (
+                <div className="post-game-actions">
+                  {!state.opponentConnected ? (
+                    <button className="btn btn-primary" disabled>
+                      Opponent left
+                    </button>
+                  ) : rematchRequested ? (
+                    <button className="btn btn-primary" disabled>
+                      Waiting for opponent...
+                    </button>
+                  ) : (
+                    <button className="btn btn-primary" onClick={handleRematch}>
+                      Rematch
+                    </button>
+                  )}
+                  <button className="btn btn-secondary" onClick={handleNewGame}>
+                    New Game
+                  </button>
+                </div>
+              )}
+
+              {state.opponentWantsRematch && !rematchRequested && (
+                <div className="rematch-overlay">
+                  <div className="rematch-overlay-content">
+                    <span className="rematch-overlay-title">Rematch?</span>
+                    <p className="rematch-overlay-subtitle">Your opponent wants another round</p>
+                    <div className="rematch-overlay-buttons">
+                      <button className="btn btn-rematch-accept" onClick={handleRematch}>
+                        Accept
+                      </button>
+                      <button className="btn btn-rematch-decline" onClick={handleNewGame}>
+                        Decline
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

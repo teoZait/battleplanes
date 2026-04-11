@@ -24,11 +24,11 @@ export interface GameUIState {
   opponentConnected: boolean;
   sessionExpired: boolean;
   waitingForOpponent: boolean;
+  opponentWantsRematch: boolean;
 }
 
 export type UIAction =
-  | { type: 'set_own_board'; board: CellStatus[][] }
-  | { type: 'game_continued'; message: string };
+  | { type: 'set_own_board'; board: CellStatus[][] };
 
 export const createEmptyBoard = (): CellStatus[][] =>
   Array.from({ length: 10 }, () =>
@@ -49,6 +49,7 @@ export const initialGameState: GameUIState = {
   opponentConnected: true,
   sessionExpired: false,
   waitingForOpponent: false,
+  opponentWantsRematch: false,
 };
 
 export function gameReducer(
@@ -161,8 +162,10 @@ export function gameReducer(
     case 'player_disconnected':
       // After a finished game, disconnections are expected — don't
       // show the "waiting for opponent" overlay or offer to continue.
+      // Clear opponentWantsRematch so the rematch overlay doesn't linger
+      // if rematch_cancelled arrives late or is lost.
       if (state.gameState === 'finished') {
-        return { ...state, opponentConnected: false };
+        return { ...state, opponentConnected: false, opponentWantsRematch: false };
       }
       return {
         ...state,
@@ -183,7 +186,7 @@ export function gameReducer(
       // After a finished game, a failed rejoin is expected — don't
       // show the "continue" banner.
       if (state.gameState === 'finished') {
-        return { ...state, opponentConnected: false };
+        return { ...state, opponentConnected: false, opponentWantsRematch: false };
       }
       return {
         ...state,
@@ -191,6 +194,30 @@ export function gameReducer(
         sessionExpired: true,
         waitingForOpponent: false,
         message: action.message,
+      };
+
+    case 'rematch_requested':
+      return {
+        ...state,
+        opponentWantsRematch: true,
+      };
+
+    case 'rematch_started':
+      return {
+        ...state,
+        opponentWantsRematch: false,
+      };
+
+    case 'rematch_cancelled':
+      return {
+        ...state,
+        opponentWantsRematch: false,
+      };
+
+    case 'rematch_declined':
+      return {
+        ...state,
+        opponentWantsRematch: false,
       };
 
     case 'error':
@@ -203,13 +230,6 @@ export function gameReducer(
       return {
         ...state,
         ownBoard: action.board,
-      };
-
-    case 'game_continued':
-      return {
-        ...initialGameState,
-        message: action.message,
-        waitingForOpponent: true,
       };
 
     default: {

@@ -54,6 +54,9 @@ class Game:
         self.session_tokens: Dict[str, Optional[str]] = {"player1": None, "player2": None}
         self.created_at: float = time.time()
         self.finished_at: Optional[float] = None
+        self.rematch_requested_by: Optional[str] = None
+        self.rematch_game_id: Optional[str] = None
+        self.disconnected_at: Dict[str, Optional[float]] = {"player1": None, "player2": None}
 
     def place_plane(self, player_id: str, plane_data: Dict) -> Tuple[bool, str]:
         """

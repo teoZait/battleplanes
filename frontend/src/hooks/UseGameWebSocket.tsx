@@ -14,11 +14,17 @@ export type ServerMessage =
   | { type: 'player_disconnected' }
   | { type: 'player_reconnected'; player_id: string }
   | { type: 'opponent_session_expired'; message: string }
+  | { type: 'rematch_requested' }
+  | { type: 'rematch_started'; game_id: string }
+  | { type: 'rematch_cancelled' }
+  | { type: 'rematch_declined'; reason: string }
   | { type: 'error'; message: string };
 
 export type ClientMessage =
   | { type: 'place_plane'; head_x: number; head_y: number; orientation: string }
-  | { type: 'attack'; x: number; y: number };
+  | { type: 'attack'; x: number; y: number }
+  | { type: 'request_rematch' }
+  | { type: 'accept_rematch' };
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -100,11 +106,10 @@ export function useGameWebSocket(params: {
         return;
       }
 
-      // Server explicitly rejected the connection (invalid/expired token,
-      // game full, etc.) — retrying won't help.  The server already sent
-      // a descriptive error via onMessage, so skip the generic onClose
-      // callback to avoid overwriting it.
-      if (event.code === 1008) {
+      // Server explicitly rejected the connection — retrying won't help.
+      // 1008: invalid/expired token, game full, etc.
+      // 4010: game is finished (now a static artifact).
+      if (event.code === 1008 || event.code === 4010) {
         setConnectionStatus('disconnected');
         return;
       }
