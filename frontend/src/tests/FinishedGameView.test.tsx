@@ -18,7 +18,7 @@ const makeData = (winner = PLAYER1 as string, mode = 'classic'): FinishedGameDat
   const p2 = createBoard();
   p2[0][7] = 'head_hit';
   p2[1][5] = 'plane';
-  return { winner, boards: { [PLAYER1]: p1, [PLAYER2]: p2 }, mode };
+  return { winner, boards: { player1: p1, player2: p2 }, mode };
 };
 
 describe('FinishedGameView', () => {
