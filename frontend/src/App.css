@@ -454,11 +454,17 @@ h1::before {
     inset 0 0 10px rgba(255, 255, 255, 0.1);
 }
 
-.btn-primary:hover {
+.btn-primary:hover:not(:disabled) {
   transform: translateY(-3px) scale(1.02);
-  box-shadow: 
+  box-shadow:
     0 8px 25px rgba(0, 210, 255, 0.5),
     inset 0 0 15px rgba(255, 255, 255, 0.15);
+}
+
+.btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.4);
 }
 
 .btn-secondary {
@@ -560,6 +566,142 @@ h1::before {
   40% { transform: scale(0.95); letter-spacing: 14px; }
   60% { transform: scale(1.02); }
   100% { transform: scale(1); opacity: 0; }
+}
+
+/* ── Rematch request overlay ── */
+
+.rematch-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 10, 30, 0.92);
+  z-index: 1000;
+  animation: rematch-bg-in 0.6s ease-out forwards;
+}
+
+.rematch-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  animation: rematch-content-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.rematch-overlay-title {
+  font-size: clamp(2.5rem, 10vw, 4.5rem);
+  font-weight: 900;
+  letter-spacing: 10px;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #ff3366 0%, #ff5c69 25%, #ffb84d 50%, #ff3366 75%, #00d2ff 100%);
+  background-size: 300% 300%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: rematch-title-enter 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards,
+             rematch-gradient-shift 3s ease-in-out 0.8s infinite;
+  filter: drop-shadow(0 0 40px rgba(255, 51, 102, 0.5))
+          drop-shadow(0 0 80px rgba(255, 51, 102, 0.2));
+}
+
+.rematch-overlay-subtitle {
+  color: rgba(200, 220, 255, 0.7);
+  font-size: clamp(0.85rem, 2.5vw, 1.1rem);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin: 0;
+  animation: rematch-subtitle-in 0.6s ease-out 0.4s both;
+}
+
+.rematch-overlay-buttons {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+  animation: rematch-buttons-in 0.5s ease-out 0.6s both;
+}
+
+.btn-rematch-accept {
+  padding: 0.9rem 2.5rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  background: linear-gradient(135deg, #00c853, #00e676, #69f0ae);
+  background-size: 200% 200%;
+  color: #003300;
+  box-shadow: 0 0 20px rgba(0, 200, 83, 0.3),
+              0 0 60px rgba(0, 200, 83, 0.15),
+              inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  animation: rematch-accept-glow 2s ease-in-out infinite;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-rematch-accept:hover {
+  transform: scale(1.06);
+  box-shadow: 0 0 30px rgba(0, 200, 83, 0.5),
+              0 0 80px rgba(0, 200, 83, 0.25),
+              inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.btn-rematch-decline {
+  padding: 0.9rem 2.5rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(200, 220, 255, 0.6);
+  transition: all 0.15s ease;
+}
+
+.btn-rematch-decline:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(200, 220, 255, 0.9);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+@keyframes rematch-bg-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes rematch-title-enter {
+  0% { transform: scale(0.3) translateY(20px); opacity: 0; letter-spacing: 40px; }
+  60% { transform: scale(1.1) translateY(0); opacity: 1; }
+  80% { transform: scale(0.97); letter-spacing: 10px; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes rematch-gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes rematch-subtitle-in {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes rematch-buttons-in {
+  0% { opacity: 0; transform: translateY(15px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes rematch-accept-glow {
+  0% { background-position: 0% 50%; box-shadow: 0 0 20px rgba(0, 200, 83, 0.3), 0 0 60px rgba(0, 200, 83, 0.15); }
+  50% { background-position: 100% 50%; box-shadow: 0 0 30px rgba(0, 230, 118, 0.5), 0 0 80px rgba(0, 230, 118, 0.2); }
+  100% { background-position: 0% 50%; box-shadow: 0 0 20px rgba(0, 200, 83, 0.3), 0 0 60px rgba(0, 200, 83, 0.15); }
 }
 
 /* ── Waiting for opponent overlay ── */

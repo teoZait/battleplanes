@@ -217,12 +217,6 @@ describe('gameReducer - waitingForOpponent', () => {
     expect(initialGameState.waitingForOpponent).toBe(false);
   });
 
-  it('should set waitingForOpponent to true on game_continued', () => {
-    const action = { type: 'game_continued' as const, message: 'Switched to new game.' };
-    const state = gameReducer(baseState, action);
-    expect(state.waitingForOpponent).toBe(true);
-  });
-
   it('should preserve waitingForOpponent through player_assigned', () => {
     const waitingState: GameUIState = { ...baseState, waitingForOpponent: true };
     const action: ServerMessage = { type: 'player_assigned', player_id: 'player1', game_state: 'playing' };
@@ -310,94 +304,6 @@ describe('gameReducer - game_over', () => {
 // steps (the bugs that bit us in production).
 
 describe('gameReducer - message sequences', () => {
-
-  // ── Continue-game flow ──────────────────────────────────────────
-
-  it('continue flow: game_continued → player_assigned → game_resumed → game_ready', () => {
-    // Start from a mid-game state with dirty boards
-    const midGame: GameUIState = {
-      ...baseState,
-      gameState: 'playing',
-      opponentConnected: false,
-      sessionExpired: true,
-      planesPlaced: 2,
-      ownBoard: (() => { const b = createEmptyBoard(); b[0][0] = 'head'; return b; })(),
-      opponentBoard: (() => { const b = createEmptyBoard(); b[1][1] = 'hit'; return b; })(),
-    };
-
-    const ownBoard = createEmptyBoard();
-    ownBoard[0][0] = 'head' as CellStatus;
-    ownBoard[1][2] = 'plane' as CellStatus;
-    const oppBoard = createEmptyBoard();
-    oppBoard[3][3] = 'hit' as CellStatus;
-
-    // Step 1: game_continued — full reset + waitingForOpponent
-    const s1 = gameReducer(midGame, { type: 'game_continued', message: 'Switched to new game.' });
-    expect(s1.waitingForOpponent).toBe(true);
-    expect(s1.sessionExpired).toBe(false);
-    expect(s1.gameState).toBe('waiting');
-    expect(s1.ownBoard[0][0]).toBe('empty');  // boards reset
-
-    // Step 2: player_assigned — must preserve waitingForOpponent
-    const s2 = gameReducer(s1, {
-      type: 'player_assigned', player_id: 'player1', game_state: 'playing',
-    } as ServerMessage);
-    expect(s2.waitingForOpponent).toBe(true);
-    expect(s2.sessionExpired).toBe(false);
-    expect(s2.playerId).toBe('player1');
-    expect(s2.gameState).toBe('playing');
-
-    // Step 3: game_resumed — restores boards, keeps waitingForOpponent
-    const s3 = gameReducer(s2, {
-      type: 'game_resumed',
-      own_board: ownBoard,
-      opponent_board: oppBoard,
-      current_turn: 'player2',
-      game_state: 'playing',
-      winner: null,
-      planes_placed: 2,
-    } as ServerMessage);
-    expect(s3.waitingForOpponent).toBe(true);
-    expect(s3.ownBoard[0][0]).toBe('head');
-    expect(s3.opponentBoard[3][3]).toBe('hit');
-    expect(s3.message).not.toBe('Reconnected to game');  // not overwritten by "Reconnected"
-
-    // Step 4: player_reconnected — opponent joined continued game, overlay cleared
-    const s4 = gameReducer(s3, { type: 'player_reconnected', player_id: 'player2' } as ServerMessage);
-    expect(s4.waitingForOpponent).toBe(false);
-    expect(s4.opponentConnected).toBe(true);
-    expect(s4.ownBoard[0][0]).toBe('head');  // boards preserved
-    expect(s4.opponentBoard[3][3]).toBe('hit');
-  });
-
-  // ── Session expired → continue ─────────────────────────────────
-
-  it('session expired then continue clears all expired state', () => {
-    const playing: GameUIState = {
-      ...baseState,
-      gameState: 'playing',
-      planesPlaced: 2,
-      opponentConnected: true,
-    };
-
-    const s1 = gameReducer(playing, {
-      type: 'opponent_session_expired', message: 'Opponent gone.',
-    } as ServerMessage);
-    expect(s1.sessionExpired).toBe(true);
-    expect(s1.opponentConnected).toBe(false);
-
-    const s2 = gameReducer(s1, { type: 'game_continued', message: 'New game.' });
-    expect(s2.sessionExpired).toBe(false);
-    expect(s2.waitingForOpponent).toBe(true);
-    expect(s2.planesPlaced).toBe(0);
-    expect(s2.gameState).toBe('waiting');
-
-    const s3 = gameReducer(s2, {
-      type: 'player_assigned', player_id: 'player1', game_state: 'playing',
-    } as ServerMessage);
-    expect(s3.sessionExpired).toBe(false);
-    expect(s3.waitingForOpponent).toBe(true);
-  });
 
   // ── Error while waiting for opponent ───────────────────────────
 
@@ -515,40 +421,6 @@ describe('gameReducer - message sequences', () => {
     expect(s.opponentBoard[0][0]).toBe('head_hit');
   });
 
-  // ── game_continued fully resets mid-game state ─────────────────
-
-  it('game_continued resets every field from a dirty mid-game state', () => {
-    const dirty: GameUIState = {
-      gameState: 'playing',
-      playerId: 'player1',
-      currentTurn: 'player2',
-      ownBoard: (() => { const b = createEmptyBoard(); b[0][0] = 'head'; b[1][1] = 'hit'; return b; })(),
-      opponentBoard: (() => { const b = createEmptyBoard(); b[5][5] = 'miss'; return b; })(),
-      message: 'old message',
-      winner: 'player2',
-      planesPlaced: 2,
-      maxPlanes: 2,
-      gameMode: 'classic',
-      opponentConnected: false,
-      sessionExpired: true,
-      waitingForOpponent: false,
-    };
-
-    const s = gameReducer(dirty, { type: 'game_continued', message: 'New game.' });
-    expect(s.gameState).toBe('waiting');
-    expect(s.playerId).toBeNull();
-    expect(s.currentTurn).toBe('player1');
-    expect(s.ownBoard[0][0]).toBe('empty');
-    expect(s.ownBoard[1][1]).toBe('empty');
-    expect(s.opponentBoard[5][5]).toBe('empty');
-    expect(s.winner).toBeNull();
-    expect(s.planesPlaced).toBe(0);
-    expect(s.opponentConnected).toBe(true);
-    expect(s.sessionExpired).toBe(false);
-    expect(s.waitingForOpponent).toBe(true);
-    expect(s.message).toBe('New game.');
-  });
-
   // ── Stale attack_result after game_over ────────────────────────
 
   it('attack_result after game_over still applies to board without crashing', () => {
@@ -635,18 +507,6 @@ describe('gameReducer - game mode', () => {
     expect(state.gameMode).toBe('classic');
   });
 
-  it('game_continued should reset maxPlanes and gameMode to defaults', () => {
-    const eliteState: GameUIState = {
-      ...baseState,
-      maxPlanes: 3,
-      gameMode: 'elite',
-      planesPlaced: 3,
-    };
-    const state = gameReducer(eliteState, { type: 'game_continued', message: 'New game.' });
-    expect(state.maxPlanes).toBe(2);
-    expect(state.gameMode).toBe('classic');
-  });
-
   it('plane_placed message reflects remaining count for elite mode', () => {
     const eliteState: GameUIState = { ...baseState, maxPlanes: 3, gameMode: 'elite' };
 
@@ -670,5 +530,81 @@ describe('gameReducer - game mode', () => {
     } as ServerMessage);
     expect(s3.planesPlaced).toBe(3);
     expect(s3.message).toContain('Waiting for opponent');
+  });
+});
+
+describe('gameReducer - rematch flow', () => {
+  const finishedState: GameUIState = {
+    ...initialGameState,
+    playerId: 'player1',
+    gameState: 'finished',
+    winner: 'player2',
+    opponentWantsRematch: false,
+  };
+
+  it('should default opponentWantsRematch to false', () => {
+    expect(initialGameState.opponentWantsRematch).toBe(false);
+  });
+
+  it('should set opponentWantsRematch on rematch_requested', () => {
+    const state = gameReducer(finishedState, { type: 'rematch_requested' } as ServerMessage);
+    expect(state.opponentWantsRematch).toBe(true);
+  });
+
+  it('should reset opponentWantsRematch on rematch_cancelled', () => {
+    const withRematch = { ...finishedState, opponentWantsRematch: true };
+    const state = gameReducer(withRematch, { type: 'rematch_cancelled' } as ServerMessage);
+    expect(state.opponentWantsRematch).toBe(false);
+  });
+
+  it('should clear opponentWantsRematch on rematch_started', () => {
+    const withRematch = { ...finishedState, opponentWantsRematch: true };
+    const state = gameReducer(withRematch, { type: 'rematch_started', game_id: 'new-id' } as ServerMessage);
+    expect(state.opponentWantsRematch).toBe(false);
+  });
+
+  it('should clear opponentWantsRematch on rematch_declined', () => {
+    const withRematch = { ...finishedState, opponentWantsRematch: true };
+    const state = gameReducer(withRematch, { type: 'rematch_declined', reason: 'opponent_disconnected' } as ServerMessage);
+    expect(state.opponentWantsRematch).toBe(false);
+  });
+
+  it('should clear opponentWantsRematch on player_disconnected in finished game', () => {
+    const withRematch = { ...finishedState, opponentWantsRematch: true };
+    const state = gameReducer(withRematch, { type: 'player_disconnected' } as ServerMessage);
+    expect(state.opponentWantsRematch).toBe(false);
+    expect(state.opponentConnected).toBe(false);
+  });
+
+  it('should clear opponentWantsRematch on opponent_session_expired in finished game', () => {
+    const withRematch = { ...finishedState, opponentWantsRematch: true };
+    const state = gameReducer(withRematch, { type: 'opponent_session_expired', message: 'expired' } as ServerMessage);
+    expect(state.opponentWantsRematch).toBe(false);
+    expect(state.opponentConnected).toBe(false);
+  });
+});
+
+describe('gameReducer - set_own_board', () => {
+
+  it('should replace ownBoard with the provided board', () => {
+    const newBoard = createEmptyBoard();
+    newBoard[0][2] = 'head' as CellStatus;
+    newBoard[1][1] = 'plane' as CellStatus;
+
+    const state = gameReducer(baseState, { type: 'set_own_board', board: newBoard });
+    expect(state.ownBoard[0][2]).toBe('head');
+    expect(state.ownBoard[1][1]).toBe('plane');
+    expect(state.ownBoard[5][5]).toBe('empty');
+  });
+
+  it('should not change any other state fields', () => {
+    const newBoard = createEmptyBoard();
+    newBoard[0][0] = 'head' as CellStatus;
+
+    const before = { ...baseState, planesPlaced: 1, message: 'hello' };
+    const state = gameReducer(before, { type: 'set_own_board', board: newBoard });
+    expect(state.planesPlaced).toBe(1);
+    expect(state.message).toBe('hello');
+    expect(state.gameState).toBe('placing');
   });
 });

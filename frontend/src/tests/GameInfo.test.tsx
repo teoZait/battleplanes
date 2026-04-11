@@ -175,17 +175,17 @@ describe('GameInfo - Session Expired Banner', () => {
     expect(container.textContent).toContain('session has expired');
   });
 
-  it('should show continue button when onContinueGame is provided', () => {
+  it('should show new game button when onNewGame is provided', () => {
     const { container } = render(
-      <GameInfo {...defaultProps} sessionExpired={true} onContinueGame={() => {}} />
+      <GameInfo {...defaultProps} sessionExpired={true} onNewGame={() => {}} />
     );
 
     const btn = container.querySelector('.session-expired-banner .btn');
     expect(btn).not.toBeNull();
-    expect(btn!.textContent).toContain('Continue in New Game');
+    expect(btn!.textContent).toContain('New Game');
   });
 
-  it('should not show continue button when onContinueGame is not provided', () => {
+  it('should not show new game button when onNewGame is not provided', () => {
     const { container } = render(
       <GameInfo {...defaultProps} sessionExpired={true} />
     );
@@ -202,14 +202,14 @@ describe('GameInfo - Session Expired Banner', () => {
     expect(container.querySelector('.message-box')).toBeNull();
   });
 
-  it('should call onContinueGame when continue button is clicked', () => {
-    const onContinue = vi.fn();
+  it('should call onNewGame when new game button is clicked', () => {
+    const onNewGame = vi.fn();
     const { container } = render(
-      <GameInfo {...defaultProps} sessionExpired={true} onContinueGame={onContinue} />
+      <GameInfo {...defaultProps} sessionExpired={true} onNewGame={onNewGame} />
     );
 
     const btn = container.querySelector('.session-expired-banner .btn') as HTMLButtonElement;
     btn.click();
-    expect(onContinue).toHaveBeenCalledOnce();
+    expect(onNewGame).toHaveBeenCalledOnce();
   });
 });

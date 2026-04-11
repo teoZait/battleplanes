@@ -3,7 +3,6 @@ Application Service - Game orchestration and use cases
 """
 from __future__ import annotations
 import asyncio
-import copy
 import logging
 import secrets
 import time
@@ -21,9 +20,10 @@ from metrics import (
 logger = logging.getLogger(__name__)
 
 # Cleanup thresholds
-_FINISHED_GAME_TTL = 30 * 60    # 30 minutes after finishing
-_WAITING_GAME_TTL = 2 * 60 * 60  # 2 hours if still waiting
-_CLEANUP_INTERVAL = 5 * 60       # run every 5 minutes
+_FINISHED_GAME_TTL = 30 * 60       # 30 minutes after finishing
+_WAITING_GAME_TTL = 2 * 60 * 60    # 2 hours if still waiting
+_DISCONNECT_GAME_TTL = 30 * 60     # 30 minutes after a player disconnects
+_CLEANUP_INTERVAL = 5 * 60         # run every 5 minutes
 
 
 class GameService:
@@ -84,6 +84,13 @@ class GameService:
                 stale_ids.append(game_id)
             elif game.state == GameState.WAITING and (now - game.created_at) > _WAITING_GAME_TTL:
                 stale_ids.append(game_id)
+            elif game.state in (GameState.PLACING, GameState.PLAYING):
+                # Clean up games where a player has been disconnected too long
+                for pid in ("player1", "player2"):
+                    dc = game.disconnected_at.get(pid)
+                    if dc and (now - dc) > _DISCONNECT_GAME_TTL:
+                        stale_ids.append(game_id)
+                        break
         for game_id in stale_ids:
             del self.games[game_id]
             self._game_locks.pop(game_id, None)
@@ -125,16 +132,28 @@ class GameService:
 
         Only exposes the game state — player slot occupancy is deliberately
         hidden to prevent game-ID enumeration attacks (#18).
+
+        For finished games the full (unmasked) boards and winner are included
+        so the result can be rendered as a static artifact.
         """
         game = await self.get_game(game_id)
         if not game:
             return None
 
-        return {
+        info: dict = {
             "id": game.id,
             "state": game.state.value,
             "mode": game.mode.value,
         }
+
+        if game.state == GameState.FINISHED:
+            info["winner"] = game.check_winner()
+            info["boards"] = {
+                "player1": game.boards["player1"],
+                "player2": game.boards["player2"],
+            }
+
+        return info
     
     async def handle_player_connection(
         self, game_id: str, websocket, token: str | None = None
@@ -180,6 +199,7 @@ class GameService:
 
             # Assign websocket to the slot
             game.players[player_id] = websocket
+            game.disconnected_at[player_id] = None
 
             # Issue a session token for brand-new players
             if game.session_tokens[player_id] is None:
@@ -250,6 +270,13 @@ class GameService:
         """Handle plane placement request"""
         game = await self.get_game(game_id)
         if not game:
+            return
+
+        if game.state != GameState.PLACING:
+            await self.connection_manager.send_to_player(game_id, player_id, {
+                "type": "error",
+                "message": "Game is not in placement phase",
+            })
             return
 
         opponent = "player2" if player_id == "player1" else "player1"
@@ -385,15 +412,29 @@ class GameService:
         self.connection_manager.disconnect(game_id, player_id)
 
         game = await self.get_game(game_id)
+        if not game:
+            return
 
-        # After a finished game, disconnections are expected — no need to
-        # notify the remaining player or clear the slot.
-        if game and game.state == GameState.FINISHED:
+        game.disconnected_at[player_id] = time.time()
+
+        # After a finished game, notify the opponent and cancel any
+        # pending rematch so neither player gets stuck waiting.
+        if game.state == GameState.FINISHED:
+            opponent = "player2" if player_id == "player1" else "player1"
+            await self.connection_manager.send_to_player(game_id, opponent, {
+                "type": "player_disconnected",
+                "player_id": player_id,
+            })
+            if game.rematch_requested_by and not game.rematch_game_id:
+                game.rematch_requested_by = None
+                await self.connection_manager.send_to_player(game_id, opponent, {
+                    "type": "rematch_cancelled",
+                })
+            await self._persist(game_id)
             return
 
         # Clear the player slot so a reconnecting client can reclaim it
-        if game:
-            game.players[player_id] = None
+        game.players[player_id] = None
 
         await self.connection_manager.broadcast_to_game(game_id, {
             "type": "player_disconnected",
@@ -402,53 +443,48 @@ class GameService:
 
         await self._persist(game_id)
 
-    async def continue_game(self, game_id: str, session_token: str) -> Optional[dict]:
-        """Create a new game that continues from the state of an existing one.
-
-        The requesting player is identified by their session token and is
-        pre-assigned to the same slot in the new game.  The opponent slot
-        is left open so anyone with the new game ID can claim it.
-        """
+    async def handle_rematch_request(self, game_id: str, player_id: str):
+        """Player requests a rematch. If both want one, create a new game."""
         game = await self.get_game(game_id)
-        if not game or game.state == GameState.WAITING:
-            return None
+        if not game or game.state != GameState.FINISHED:
+            return
 
-        # Identify the requesting player
-        requesting_player = None
-        for pid in ("player1", "player2"):
-            stored = game.session_tokens.get(pid)
-            if stored and secrets.compare_digest(stored, session_token):
-                requesting_player = pid
-                break
-        if not requesting_player:
-            return None
+        if game.rematch_game_id:
+            # Rematch already created — resend the game ID
+            await self.connection_manager.send_to_player(game_id, player_id, {
+                "type": "rematch_started",
+                "game_id": game.rematch_game_id,
+            })
+            return
 
-        opponent = "player2" if requesting_player == "player1" else "player1"
+        opponent = "player2" if player_id == "player1" else "player1"
 
-        # Clone game state into a new game (preserve mode)
-        new_game = Game(str(uuid.uuid4()), mode=game.mode)
-        new_game.boards = copy.deepcopy(game.boards)
-        new_game.planes = copy.deepcopy(game.planes)
-        new_game.current_turn = game.current_turn
-        new_game.state = game.state
-        new_game.ready = copy.copy(game.ready)
+        # If the opponent isn't connected, a rematch isn't possible.
+        opponent_connected = bool(
+            self.connection_manager.active_connections
+            .get(game_id, {})
+            .get(opponent)
+        )
+        if not opponent_connected:
+            await self.connection_manager.send_to_player(game_id, player_id, {
+                "type": "rematch_declined",
+                "reason": "opponent_disconnected",
+            })
+            return
 
-        # During PLACING the new opponent hasn't placed planes yet — clear
-        # their board/planes/ready so they start placement fresh.
-        if game.state == GameState.PLACING:
-            new_game.boards[opponent] = [["empty"] * 10 for _ in range(10)]
-            new_game.planes[opponent] = []
-            new_game.ready[opponent] = False
+        if game.rematch_requested_by == opponent:
+            # Both players want a rematch — create the new game
+            new_game_id = await self.create_game(mode=game.mode)
+            game.rematch_game_id = new_game_id
+            await self._persist(game_id)
+            await self.connection_manager.broadcast_to_game(game_id, {
+                "type": "rematch_started",
+                "game_id": new_game_id,
+            })
+        elif game.rematch_requested_by != player_id:
+            game.rematch_requested_by = player_id
+            await self._persist(game_id)
+            await self.connection_manager.send_to_player(game_id, opponent, {
+                "type": "rematch_requested",
+            })
 
-        # Pre-assign a token only for the requesting player's slot
-        new_token = secrets.token_urlsafe(32)
-        new_game.session_tokens[requesting_player] = new_token
-
-        self.games[new_game.id] = new_game
-        await self._persist(new_game.id)
-
-        return {
-            "game_id": new_game.id,
-            "session_token": new_token,
-            "player_id": requesting_player,
-        }

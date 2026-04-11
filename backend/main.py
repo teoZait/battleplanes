@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app
 from pydantic import ValidationError
 from application.game_service import GameService
-from application.schemas import parse_client_message, AuthMessage, CreateGameRequest, ContinueGameRequest
+from application.schemas import parse_client_message, AuthMessage, CreateGameRequest
 from domain.models import GameState
 from domain.value_objects import GameMode
 from infrastructure.game_store import GameStore
@@ -199,15 +199,6 @@ async def get_game(game_id: str):
     return game_info
 
 
-@app.post("/api/game/{game_id}/continue")
-async def continue_game(game_id: str, body: ContinueGameRequest):
-    """Create a new game that continues from the state of an existing one."""
-    result = await game_service.continue_game(game_id, body.session_token)
-    if not result:
-        raise HTTPException(status_code=400, detail="Cannot continue this game")
-    return result
-
-
 # WebSocket security limits
 _WS_MSG_PER_SECOND = 10
 _WS_MAX_MSG_SIZE = 1024  # bytes (valid game messages are < 200 bytes)
@@ -233,9 +224,13 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
         await websocket.close(code=1008)
         return
 
-    # Verify game exists
-    if not await game_service.get_game(game_id):
+    # Verify game exists and is still in progress
+    game = await game_service.get_game(game_id)
+    if not game:
         await websocket.close(code=1008)
+        return
+    if game.state == GameState.FINISHED:
+        await websocket.close(code=4010)
         return
 
     # Accept the connection, then wait for the client's auth message.
@@ -326,6 +321,9 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
 
             elif message.type == "attack":
                 await game_service.handle_attack(game_id, player_id, message.x, message.y)
+
+            elif message.type in ("request_rematch", "accept_rematch"):
+                await game_service.handle_rematch_request(game_id, player_id)
 
             elif message.type == "get_boards":
                 game = await game_service.get_game(game_id)

@@ -61,6 +61,12 @@ class MockWebSocket {
     this.readyState = MockWebSocket.CLOSED;
     this.onclose?.({});
   }
+
+  /** Simulate server rejecting the connection with a specific close code. */
+  simulateReject(code: number) {
+    this.readyState = MockWebSocket.CLOSED;
+    this.onclose?.({ code });
+  }
 }
 
 // Apply mock globally
@@ -785,6 +791,51 @@ describe('useGameWebSocket', () => {
       expect(MockWebSocket.instances).toHaveLength(countAfter);
       expect(result.current.connectionStatus).toBe('disconnected');
       expect(onClose).toHaveBeenCalled();
+    });
+
+    it('should not retry on close code 1008 (auth/game rejection)', () => {
+      const onMessage = vi.fn();
+      const { result } = renderHook(() =>
+        useGameWebSocket({ gameId: 'game-123', onMessage })
+      );
+
+      act(() => latestWS().simulateOpen());
+      const countBefore = MockWebSocket.instances.length;
+
+      act(() => latestWS().simulateReject(1008));
+
+      act(() => vi.advanceTimersByTime(60000));
+      expect(MockWebSocket.instances).toHaveLength(countBefore);
+      expect(result.current.connectionStatus).toBe('disconnected');
+    });
+
+    it('should not retry on close code 4010 (finished game)', () => {
+      const onMessage = vi.fn();
+      const { result } = renderHook(() =>
+        useGameWebSocket({ gameId: 'game-123', onMessage })
+      );
+
+      act(() => latestWS().simulateOpen());
+      const countBefore = MockWebSocket.instances.length;
+
+      act(() => latestWS().simulateReject(4010));
+
+      act(() => vi.advanceTimersByTime(60000));
+      expect(MockWebSocket.instances).toHaveLength(countBefore);
+      expect(result.current.connectionStatus).toBe('disconnected');
+    });
+
+    it('should not call onClose on server rejection codes (error already sent)', () => {
+      const onMessage = vi.fn();
+      const onClose = vi.fn();
+      renderHook(() =>
+        useGameWebSocket({ gameId: 'game-123', onMessage, onClose })
+      );
+
+      act(() => latestWS().simulateOpen());
+      act(() => latestWS().simulateReject(1008));
+
+      expect(onClose).not.toHaveBeenCalled();
     });
 
     it('should not enter infinite retry loop when server always rejects auth', () => {

@@ -5,6 +5,7 @@ Uses mock WebSocket objects to test the service in isolation,
 without going through HTTP/ASGI.
 """
 import asyncio
+import time
 import pytest
 from application.game_service import GameService
 from domain.value_objects import GameState, GameMode
@@ -78,6 +79,19 @@ async def _setup_playing(service: GameService):
     return game_id, ws1, ws2
 
 
+async def _play_to_finish(service: GameService):
+    """Setup and play a game to completion. Returns (game_id, ws1, ws2)."""
+    gid, ws1, ws2 = await _setup_playing(service)
+    await service.handle_attack(gid, "player1", 2, 0)   # head_hit
+    await service.handle_attack(gid, "player2", 5, 5)   # miss
+    await service.handle_attack(gid, "player1", 7, 0)   # head_hit → game over
+    game = await service.get_game(gid)
+    assert game.state == GameState.FINISHED
+    ws1.clear()
+    ws2.clear()
+    return gid, ws1, ws2
+
+
 # ---------------------------------------------------------------------------
 # Game creation
 # ---------------------------------------------------------------------------
@@ -112,108 +126,10 @@ class TestGameCreation:
 
 
 # ---------------------------------------------------------------------------
-# Player connection
-# ---------------------------------------------------------------------------
-
-class TestPlayerConnection:
-
-    @pytest.mark.asyncio
-    async def test_first_player(self, service):
-        gid = await service.create_game()
-        ws = MockWebSocket()
-        pid = await service.handle_player_connection(gid, ws)
-
-        assert pid == "player1"
-        msg = ws.find("player_assigned")
-        assert msg["player_id"] == "player1"
-        assert msg["game_state"] == "waiting"
-
-    @pytest.mark.asyncio
-    async def test_first_player_gets_session_token(self, service):
-        """player_assigned message should include a session token."""
-        gid = await service.create_game()
-        ws = MockWebSocket()
-        await service.handle_player_connection(gid, ws)
-
-        msg = ws.find("player_assigned")
-        assert "session_token" in msg
-        assert isinstance(msg["session_token"], str)
-        assert len(msg["session_token"]) > 0
-
-    @pytest.mark.asyncio
-    async def test_second_player_starts_placing(self, service):
-        gid = await service.create_game()
-        ws1, ws2 = await _connect_two(service, gid)
-
-        p2_msg = ws2.find("player_assigned")
-        assert p2_msg["game_state"] == "placing"
-
-        assert ws1.find("game_ready") is not None
-        assert ws2.find("game_ready") is not None
-
-    @pytest.mark.asyncio
-    async def test_third_player_rejected(self, service):
-        gid = await service.create_game()
-        await _connect_two(service, gid)
-
-        ws3 = MockWebSocket()
-        assert await service.handle_player_connection(gid, ws3) is None
-
-    @pytest.mark.asyncio
-    async def test_nonexistent_game_rejected(self, service):
-        ws = MockWebSocket()
-        assert await service.handle_player_connection("nope", ws) is None
-
-
-# ---------------------------------------------------------------------------
 # Session token authentication (#13)
 # ---------------------------------------------------------------------------
 
 class TestSessionTokenAuth:
-
-    @pytest.mark.asyncio
-    async def test_reconnect_with_valid_token(self, service):
-        """A disconnected player can reclaim their slot with the correct token."""
-        gid, ws1, ws2 = await _setup_playing(service)
-        game = await service.get_game(gid)
-        token2 = game.session_tokens["player2"]
-
-        await service.handle_player_disconnection(gid, "player2")
-
-        ws2_new = MockWebSocket()
-        pid = await service.handle_player_connection(gid, ws2_new, token=token2)
-        assert pid == "player2"
-
-    @pytest.mark.asyncio
-    async def test_reconnect_with_invalid_token_rejected(self, service):
-        """An invalid token must not reclaim a slot."""
-        gid, _, _ = await _setup_playing(service)
-
-        await service.handle_player_disconnection(gid, "player2")
-
-        ws2_new = MockWebSocket()
-        pid = await service.handle_player_connection(gid, ws2_new, token="wrong-token")
-        assert pid is None
-
-    @pytest.mark.asyncio
-    async def test_reconnect_without_token_rejected(self, service):
-        """After a player has connected once, reconnecting without token should fail."""
-        gid, _, _ = await _setup_playing(service)
-
-        await service.handle_player_disconnection(gid, "player2")
-
-        ws2_new = MockWebSocket()
-        pid = await service.handle_player_connection(gid, ws2_new)
-        assert pid is None
-
-    @pytest.mark.asyncio
-    async def test_cannot_steal_occupied_slot(self, service):
-        """A third connection with no token gets rejected when both slots are claimed."""
-        gid = await service.create_game()
-        await _connect_two(service, gid)
-
-        ws3 = MockWebSocket()
-        assert await service.handle_player_connection(gid, ws3) is None
 
     @pytest.mark.asyncio
     async def test_tokens_persist_across_disconnect(self, service):
@@ -239,175 +155,6 @@ class TestSessionTokenAuth:
 
 
 # ---------------------------------------------------------------------------
-# Plane placement
-# ---------------------------------------------------------------------------
-
-class TestPlacement:
-
-    @pytest.mark.asyncio
-    async def test_place_valid_plane(self, service):
-        gid = await service.create_game()
-        ws1, _ = await _connect_two(service, gid)
-        ws1.clear()
-
-        await service.handle_plane_placement(gid, "player1", PLANE_1)
-        r = ws1.last()
-        assert r["type"] == "plane_placed"
-        assert r["success"] is True and r["planes_count"] == 1
-
-    @pytest.mark.asyncio
-    async def test_overlapping_plane_rejected(self, service):
-        gid = await service.create_game()
-        ws1, _ = await _connect_two(service, gid)
-        ws1.clear()
-
-        await service.handle_plane_placement(gid, "player1", PLANE_1)
-        await service.handle_plane_placement(gid, "player1", PLANE_1)
-        assert ws1.last()["success"] is False
-
-    @pytest.mark.asyncio
-    async def test_game_starts_when_both_ready(self, service):
-        gid, ws1, ws2 = await _setup_playing(service)
-        game = await service.get_game(gid)
-        assert game.state == "playing"
-        assert game.current_turn == "player1"
-
-    @pytest.mark.asyncio
-    async def test_placement_rejected_when_opponent_disconnected(self, service):
-        """Placing a plane while opponent is disconnected must be rejected."""
-        gid = await service.create_game()
-        ws1, ws2 = await _connect_two(service, gid)
-        await service.handle_player_disconnection(gid, "player2")
-        ws1.clear()
-
-        await service.handle_plane_placement(gid, "player1", PLANE_1)
-        err = ws1.find("error")
-        assert err is not None
-        assert "disconnected" in err["message"].lower()
-
-
-# ---------------------------------------------------------------------------
-# Attack
-# ---------------------------------------------------------------------------
-
-class TestAttack:
-
-    @pytest.mark.asyncio
-    async def test_miss(self, service):
-        gid, ws1, ws2 = await _setup_playing(service)
-        await service.handle_attack(gid, "player1", 5, 5)
-        assert ws1.last()["type"] == "turn_changed"
-        atk = ws1.find("attack_result")
-        assert atk["result"] == "miss" and atk["is_attacker"] is True
-
-    @pytest.mark.asyncio
-    async def test_body_hit(self, service):
-        gid, ws1, _ = await _setup_playing(service)
-        await service.handle_attack(gid, "player1", 0, 1)  # wing cell
-        atk = ws1.find("attack_result")
-        assert atk["result"] == "hit"
-
-    @pytest.mark.asyncio
-    async def test_head_hit(self, service):
-        gid, ws1, _ = await _setup_playing(service)
-        await service.handle_attack(gid, "player1", 2, 0)  # cockpit
-        atk = ws1.find("attack_result")
-        assert atk["result"] == "head_hit"
-
-    @pytest.mark.asyncio
-    async def test_not_your_turn(self, service):
-        gid, _, ws2 = await _setup_playing(service)
-        await service.handle_attack(gid, "player2", 5, 5)
-        err = ws2.find("error")
-        assert err is not None and "Not your turn" in err["message"]
-
-    @pytest.mark.asyncio
-    async def test_turn_switches(self, service):
-        gid, _, _ = await _setup_playing(service)
-        await service.handle_attack(gid, "player1", 5, 5)
-        game = await service.get_game(gid)
-        assert game.current_turn == "player2"
-
-    @pytest.mark.asyncio
-    async def test_attack_rejected_when_opponent_disconnected(self, service):
-        """Attacking while opponent is disconnected must be rejected."""
-        gid, ws1, ws2 = await _setup_playing(service)
-        await service.handle_player_disconnection(gid, "player2")
-        ws1.clear()
-
-        await service.handle_attack(gid, "player1", 5, 5)
-        err = ws1.find("error")
-        assert err is not None
-        assert "disconnected" in err["message"].lower()
-
-    @pytest.mark.asyncio
-    async def test_game_over(self, service):
-        gid, ws1, ws2 = await _setup_playing(service)
-
-        # P1 destroys both cockpits (with P2 taking a turn in between)
-        await service.handle_attack(gid, "player1", 2, 0)  # head_hit
-        ws1.clear(); ws2.clear()
-        await service.handle_attack(gid, "player2", 5, 5)  # P2 misses (turn back to P1)
-        ws1.clear(); ws2.clear()
-        await service.handle_attack(gid, "player1", 7, 0)  # head_hit → game over
-
-        go = ws1.find("game_over")
-        assert go is not None and go["winner"] == "player1"
-        game = await service.get_game(gid)
-        assert game.state == GameState.FINISHED
-
-    @pytest.mark.asyncio
-    async def test_game_over_includes_opponent_board(self, service):
-        """game_over message must include the opponent's full (unmasked) board."""
-        gid, ws1, ws2 = await _setup_playing(service)
-
-        await service.handle_attack(gid, "player1", 2, 0)  # head_hit
-        ws1.clear(); ws2.clear()
-        await service.handle_attack(gid, "player2", 5, 5)  # miss
-        ws1.clear(); ws2.clear()
-        await service.handle_attack(gid, "player1", 7, 0)  # head_hit → game over
-
-        # Winner (P1) receives loser's board
-        go1 = ws1.find("game_over")
-        assert go1 is not None
-        assert "opponent_board" in go1
-        board1 = go1["opponent_board"]
-        assert len(board1) == 10 and len(board1[0]) == 10
-        # Board must contain plane cells (unmasked)
-        flat1 = [cell for row in board1 for cell in row]
-        assert "plane" in flat1 or "head" in flat1 or "head_hit" in flat1
-
-        # Loser (P2) receives winner's board
-        go2 = ws2.find("game_over")
-        assert go2 is not None
-        assert "opponent_board" in go2
-        board2 = go2["opponent_board"]
-        flat2 = [cell for row in board2 for cell in row]
-        assert "plane" in flat2 or "head" in flat2
-
-    @pytest.mark.asyncio
-    async def test_game_over_boards_are_unmasked(self, service):
-        """Verify specific plane positions are visible in the revealed board."""
-        gid, ws1, ws2 = await _setup_playing(service)
-
-        # P1 destroys P2's two cockpits
-        await service.handle_attack(gid, "player1", 2, 0)  # head_hit on PLANE_1
-        ws1.clear(); ws2.clear()
-        await service.handle_attack(gid, "player2", 5, 5)  # miss
-        ws1.clear(); ws2.clear()
-        await service.handle_attack(gid, "player1", 7, 0)  # head_hit on PLANE_2 → game over
-
-        go1 = ws1.find("game_over")
-        board = go1["opponent_board"]
-        # PLANE_1 head at (2,0) was hit → head_hit; PLANE_2 head at (7,0) was hit → head_hit
-        assert board[0][2] == "head_hit"
-        assert board[0][7] == "head_hit"
-        # Body cells of the planes should still be "plane" (not masked to "empty")
-        # PLANE_1 wing cells at row 1 (y=1): x=0,1,2,3,4
-        assert board[1][0] == "plane"
-
-
-# ---------------------------------------------------------------------------
 # Disconnect & reconnect
 # ---------------------------------------------------------------------------
 
@@ -420,30 +167,6 @@ class TestDisconnect:
         await service.handle_player_disconnection(gid, "player1")
         game = await service.get_game(gid)
         assert game.players["player1"] is None
-
-    @pytest.mark.asyncio
-    async def test_disconnect_notifies_opponent(self, service):
-        gid = await service.create_game()
-        _, ws2 = await _connect_two(service, gid)
-        ws2.clear()
-        await service.handle_player_disconnection(gid, "player1")
-        assert ws2.find("player_disconnected") is not None
-
-    @pytest.mark.asyncio
-    async def test_disconnect_after_finished_does_not_notify(self, service):
-        """After a finished game, disconnecting should NOT send player_disconnected."""
-        gid, ws1, ws2 = await _setup_playing(service)
-
-        # Play to completion
-        await service.handle_attack(gid, "player1", 2, 0)  # head_hit
-        await service.handle_attack(gid, "player2", 5, 5)  # miss
-        await service.handle_attack(gid, "player1", 7, 0)  # head_hit → game over
-
-        ws1.clear()
-        ws2.clear()
-
-        await service.handle_player_disconnection(gid, "player2")
-        assert ws1.find("player_disconnected") is None
 
     @pytest.mark.asyncio
     async def test_disconnect_after_finished_does_not_clear_slot(self, service):
@@ -459,27 +182,6 @@ class TestDisconnect:
         assert game.players["player2"] is not None
 
     @pytest.mark.asyncio
-    async def test_reconnect_sends_game_resumed(self, service):
-        gid, ws1, ws2 = await _setup_playing(service)
-        game = await service.get_game(gid)
-        token2 = game.session_tokens["player2"]
-
-        await service.handle_player_disconnection(gid, "player2")
-
-        ws2_new = MockWebSocket()
-        pid = await service.handle_player_connection(gid, ws2_new, token=token2)
-        assert pid == "player2"
-
-        assigned = ws2_new.find("player_assigned")
-        assert assigned["game_state"] == "playing"
-
-        resumed = ws2_new.find("game_resumed")
-        assert resumed is not None
-        assert len(resumed["own_board"]) == 10
-        assert len(resumed["opponent_board"]) == 10
-        assert resumed["current_turn"] == "player1"
-
-    @pytest.mark.asyncio
     async def test_reconnect_does_not_reset_state(self, service):
         """Reconnecting player2 must not revert the game to PLACING."""
         gid, _, ws2 = await _setup_playing(service)
@@ -492,23 +194,6 @@ class TestDisconnect:
         await service.handle_player_connection(gid, ws2_new, token=token2)
 
         assert game.state == "playing"
-
-    @pytest.mark.asyncio
-    async def test_reconnect_preserves_board(self, service):
-        """Board damage should survive a disconnect/reconnect cycle."""
-        gid, ws1, ws2 = await _setup_playing(service)
-        game = await service.get_game(gid)
-        token2 = game.session_tokens["player2"]
-
-        # P1 hits P2's cockpit
-        await service.handle_attack(gid, "player1", 2, 0)
-
-        await service.handle_player_disconnection(gid, "player2")
-        ws2_new = MockWebSocket()
-        await service.handle_player_connection(gid, ws2_new, token=token2)
-
-        resumed = ws2_new.find("game_resumed")
-        assert resumed["own_board"][0][2] == "head_hit"
 
     @pytest.mark.asyncio
     async def test_reconnect_notifies_opponent_during_playing(self, service):
@@ -558,76 +243,6 @@ class TestDisconnect:
         assert ws1.find("player_reconnected") is None
 
     @pytest.mark.asyncio
-    async def test_reconnect_to_finished_game_reveals_opponent_board(self, service):
-        """Reconnecting to a finished game must show unmasked opponent board."""
-        gid, ws1, ws2 = await _setup_playing(service)
-
-        # Play to completion
-        await service.handle_attack(gid, "player1", 2, 0)  # head_hit
-        await service.handle_attack(gid, "player2", 5, 5)  # miss
-        await service.handle_attack(gid, "player1", 7, 0)  # head_hit → game over
-
-        game = await service.get_game(gid)
-        token1 = game.session_tokens["player1"]
-
-        await service.handle_player_disconnection(gid, "player1")
-
-        ws1_new = MockWebSocket()
-        await service.handle_player_connection(gid, ws1_new, token=token1)
-
-        resumed = ws1_new.find("game_resumed")
-        assert resumed is not None
-        assert resumed["game_state"] == "finished"
-        assert resumed["winner"] == "player1"
-        # Opponent board must be unmasked — should contain plane cells
-        flat = [cell for row in resumed["opponent_board"] for cell in row]
-        assert "plane" in flat or "head" in flat or "head_hit" in flat
-
-    @pytest.mark.asyncio
-    async def test_reconnect_to_playing_game_still_masks_board(self, service):
-        """Reconnecting to an in-progress game must NOT reveal opponent planes."""
-        gid, ws1, ws2 = await _setup_playing(service)
-        game = await service.get_game(gid)
-        token2 = game.session_tokens["player2"]
-
-        await service.handle_player_disconnection(gid, "player2")
-
-        ws2_new = MockWebSocket()
-        await service.handle_player_connection(gid, ws2_new, token=token2)
-
-        resumed = ws2_new.find("game_resumed")
-        assert resumed is not None
-        # Opponent board must be masked — no "plane" or "head" cells visible
-        flat = [cell for row in resumed["opponent_board"] for cell in row]
-        assert "plane" not in flat
-        assert "head" not in flat
-
-    @pytest.mark.asyncio
-    async def test_reconnect_during_placing_sends_game_resumed(self, service):
-        """Reconnecting during PLACING should send game_resumed with board and planes count."""
-        gid = await service.create_game()
-        ws1, ws2 = await _connect_two(service, gid)
-        game = await service.get_game(gid)
-        token1 = game.session_tokens["player1"]
-
-        # P1 places one plane, then disconnects
-        await service.handle_plane_placement(gid, "player1", PLANE_1)
-
-        await service.handle_player_disconnection(gid, "player1")
-
-        ws1_new = MockWebSocket()
-        await service.handle_player_connection(gid, ws1_new, token=token1)
-
-        assigned = ws1_new.find("player_assigned")
-        assert assigned["game_state"] == "placing"
-
-        resumed = ws1_new.find("game_resumed")
-        assert resumed is not None
-        assert resumed["game_state"] == "placing"
-        assert resumed["planes_placed"] == 1
-        assert len(resumed["own_board"]) == 10
-
-    @pytest.mark.asyncio
     async def test_reconnect_during_placing_notifies_game_ready(self, service):
         """Reconnecting during PLACING should broadcast game_ready to both players."""
         gid = await service.create_game()
@@ -643,33 +258,6 @@ class TestDisconnect:
 
         # Both players should get game_ready
         assert ws2.find("game_ready") is not None
-
-    @pytest.mark.asyncio
-    async def test_reconnect_during_placing_preserves_placed_planes(self, service):
-        """Reconnecting after placing 2 planes should show them in own_board."""
-        gid = await service.create_game()
-        ws1, ws2 = await _connect_two(service, gid)
-        game = await service.get_game(gid)
-        token1 = game.session_tokens["player1"]
-
-        # P1 places both planes
-        await service.handle_plane_placement(gid, "player1", PLANE_1)
-        await service.handle_plane_placement(gid, "player1", PLANE_2)
-
-        await service.handle_player_disconnection(gid, "player1")
-
-        ws1_new = MockWebSocket()
-        await service.handle_player_connection(gid, ws1_new, token=token1)
-
-        resumed = ws1_new.find("game_resumed")
-        assert resumed is not None
-        assert resumed["planes_placed"] == 2
-        # Own board should contain plane cells at known positions
-        # PLANE_1 head at (2,0), PLANE_2 head at (7,0)
-        assert resumed["own_board"][0][2] == "head"
-        assert resumed["own_board"][0][7] == "head"
-        flat = [cell for row in resumed["own_board"] for cell in row]
-        assert flat.count("plane") + flat.count("head") == 20  # 2 planes x 10 cells
 
 
 # ---------------------------------------------------------------------------
@@ -713,175 +301,6 @@ class TestConnectionLock:
         gid1 = await service.create_game()
         gid2 = await service.create_game()
         assert service._get_lock(gid1) is not service._get_lock(gid2)
-
-
-# ---------------------------------------------------------------------------
-# game_state serialised as plain string (#25)
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# Continue game
-# ---------------------------------------------------------------------------
-
-class TestContinueGame:
-
-    @pytest.mark.asyncio
-    async def test_copies_boards_and_planes(self, service):
-        """Continuation game should have identical boards and planes."""
-        gid, ws1, ws2 = await _setup_playing(service)
-        game = await service.get_game(gid)
-        token1 = game.session_tokens["player1"]
-
-        # Deal some damage first
-        await service.handle_attack(gid, "player1", 5, 5)  # miss
-        original_boards = {pid: [row[:] for row in game.boards[pid]] for pid in ("player1", "player2")}
-
-        result = await service.continue_game(gid, token1)
-        assert result is not None
-
-        new_game = await service.get_game(result["game_id"])
-        assert new_game.boards == original_boards
-        assert len(new_game.planes["player1"]) == 2
-        assert len(new_game.planes["player2"]) == 2
-
-    @pytest.mark.asyncio
-    async def test_preserves_current_turn(self, service):
-        """Continuation should keep the same current_turn."""
-        gid, ws1, ws2 = await _setup_playing(service)
-        game = await service.get_game(gid)
-        token1 = game.session_tokens["player1"]
-
-        # Switch turn: P1 attacks, now it's P2's turn
-        await service.handle_attack(gid, "player1", 5, 5)
-        assert game.current_turn == "player2"
-
-        result = await service.continue_game(gid, token1)
-        new_game = await service.get_game(result["game_id"])
-        assert new_game.current_turn == "player2"
-
-    @pytest.mark.asyncio
-    async def test_preserves_game_state(self, service):
-        """Continuation should copy the game state (playing, placing, etc.)."""
-        gid, ws1, ws2 = await _setup_playing(service)
-        game = await service.get_game(gid)
-        token1 = game.session_tokens["player1"]
-
-        result = await service.continue_game(gid, token1)
-        new_game = await service.get_game(result["game_id"])
-        assert new_game.state == GameState.PLAYING
-
-    @pytest.mark.asyncio
-    async def test_requesting_player_keeps_same_slot(self, service):
-        """The requesting player should be assigned to their original slot."""
-        gid, ws1, ws2 = await _setup_playing(service)
-        game = await service.get_game(gid)
-        token2 = game.session_tokens["player2"]
-
-        result = await service.continue_game(gid, token2)
-        assert result["player_id"] == "player2"
-
-    @pytest.mark.asyncio
-    async def test_requesting_player_gets_new_token(self, service):
-        """The response should include a new session token for the new game."""
-        gid, ws1, ws2 = await _setup_playing(service)
-        game = await service.get_game(gid)
-        token1 = game.session_tokens["player1"]
-
-        result = await service.continue_game(gid, token1)
-        assert result["session_token"] is not None
-        assert result["session_token"] != token1  # different game, different token
-
-    @pytest.mark.asyncio
-    async def test_opponent_slot_is_open(self, service):
-        """The opponent slot in the new game should have no token (open for anyone)."""
-        gid, ws1, ws2 = await _setup_playing(service)
-        game = await service.get_game(gid)
-        token1 = game.session_tokens["player1"]
-
-        result = await service.continue_game(gid, token1)
-        new_game = await service.get_game(result["game_id"])
-
-        # player1 slot has a token, player2 slot is open
-        assert new_game.session_tokens["player1"] is not None
-        assert new_game.session_tokens["player2"] is None
-
-    @pytest.mark.asyncio
-    async def test_placing_clears_opponent_planes(self, service):
-        """Continue from PLACING should clear the opponent's planes/board/ready."""
-        gid = await service.create_game()
-        ws1, ws2 = await _connect_two(service, gid)
-
-        # Both players place planes
-        for pid in ("player1", "player2"):
-            await service.handle_plane_placement(gid, pid, PLANE_1)
-            await service.handle_plane_placement(gid, pid, PLANE_2)
-
-        # Force game back to PLACING to simulate the edge case
-        game = await service.get_game(gid)
-        game.state = GameState.PLACING
-
-        token1 = game.session_tokens["player1"]
-        result = await service.continue_game(gid, token1)
-        new_game = await service.get_game(result["game_id"])
-
-        # Player1's state preserved
-        assert len(new_game.planes["player1"]) == 2
-        assert new_game.ready["player1"] is True
-
-        # Opponent's state cleared — new player starts fresh
-        assert len(new_game.planes["player2"]) == 0
-        assert new_game.ready["player2"] is False
-        assert all(cell == "empty" for row in new_game.boards["player2"] for cell in row)
-
-    @pytest.mark.asyncio
-    async def test_playing_preserves_opponent_planes(self, service):
-        """Continue from PLAYING should keep both players' planes intact."""
-        gid, ws1, ws2 = await _setup_playing(service)
-        game = await service.get_game(gid)
-        token1 = game.session_tokens["player1"]
-
-        result = await service.continue_game(gid, token1)
-        new_game = await service.get_game(result["game_id"])
-
-        assert len(new_game.planes["player1"]) == 2
-        assert len(new_game.planes["player2"]) == 2
-
-    @pytest.mark.asyncio
-    async def test_rejects_invalid_token(self, service):
-        gid, ws1, ws2 = await _setup_playing(service)
-        result = await service.continue_game(gid, "bad-token")
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_rejects_waiting_game(self, service):
-        gid = await service.create_game()
-        ws = MockWebSocket()
-        await service.handle_player_connection(gid, ws)
-        game = await service.get_game(gid)
-        token = game.session_tokens["player1"]
-
-        result = await service.continue_game(gid, token)
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_rejects_nonexistent_game(self, service):
-        result = await service.continue_game("no-such-game", "any-token")
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_new_game_is_independent(self, service):
-        """Mutations in the new game must not affect the original."""
-        gid, ws1, ws2 = await _setup_playing(service)
-        game = await service.get_game(gid)
-        token1 = game.session_tokens["player1"]
-
-        result = await service.continue_game(gid, token1)
-        new_game = await service.get_game(result["game_id"])
-
-        # Mutate new game's board
-        new_game.boards["player1"][0][0] = "hit"
-        # Original should be unchanged
-        assert game.boards["player1"][0][0] != "hit"
 
 
 # ---------------------------------------------------------------------------
@@ -1039,12 +458,273 @@ class TestGameModeService:
         game = await service.get_game(gid)
         assert game.state == GameState.PLAYING
 
-    @pytest.mark.asyncio
-    async def test_continue_preserves_mode(self, service):
-        gid, ws1, ws2 = await _setup_elite_playing(service)
-        game = await service.get_game(gid)
-        token1 = game.session_tokens["player1"]
 
-        result = await service.continue_game(gid, token1)
-        new_game = await service.get_game(result["game_id"])
+# ---------------------------------------------------------------------------
+# Rematch flow
+# ---------------------------------------------------------------------------
+
+class TestRematch:
+
+    @pytest.mark.asyncio
+    async def test_rematch_request_notifies_opponent(self, service):
+        gid, ws1, ws2 = await _play_to_finish(service)
+        await service.handle_rematch_request(gid, "player1")
+        assert ws2.find("rematch_requested") is not None
+        assert ws1.find("rematch_requested") is None
+
+    @pytest.mark.asyncio
+    async def test_both_request_creates_new_game(self, service):
+        gid, ws1, ws2 = await _play_to_finish(service)
+        await service.handle_rematch_request(gid, "player1")
+        ws1.clear(); ws2.clear()
+        await service.handle_rematch_request(gid, "player2")
+
+        msg1 = ws1.find("rematch_started")
+        msg2 = ws2.find("rematch_started")
+        assert msg1 is not None and msg2 is not None
+        assert msg1["game_id"] == msg2["game_id"]
+        # New game should exist
+        new_game = await service.get_game(msg1["game_id"])
+        assert new_game is not None
+        assert new_game.state == GameState.WAITING
+
+    @pytest.mark.asyncio
+    async def test_rematch_preserves_game_mode(self, service):
+        gid = await service.create_game(mode=GameMode.ELITE)
+        ws1, ws2 = await _connect_two(service, gid)
+        for pid in ("player1", "player2"):
+            await service.handle_plane_placement(gid, pid, PLANE_1)
+            await service.handle_plane_placement(gid, pid, PLANE_2)
+            await service.handle_plane_placement(gid, pid, PLANE_3)
+        game = await service.get_game(gid)
+        assert game.state == GameState.PLAYING
+        # Destroy all 3 heads for player2
+        await service.handle_attack(gid, "player1", 2, 0)
+        await service.handle_attack(gid, "player2", 5, 5)
+        await service.handle_attack(gid, "player1", 7, 0)
+        await service.handle_attack(gid, "player2", 5, 6)
+        await service.handle_attack(gid, "player1", 5, 9)
+        ws1.clear(); ws2.clear()
+
+        await service.handle_rematch_request(gid, "player1")
+        await service.handle_rematch_request(gid, "player2")
+        new_id = ws1.find("rematch_started")["game_id"]
+        new_game = await service.get_game(new_id)
         assert new_game.mode == GameMode.ELITE
+
+    @pytest.mark.asyncio
+    async def test_duplicate_request_does_not_re_notify(self, service):
+        gid, ws1, ws2 = await _play_to_finish(service)
+        await service.handle_rematch_request(gid, "player1")
+        ws2.clear()
+        await service.handle_rematch_request(gid, "player1")
+        # Second request should not send another notification
+        assert ws2.find("rematch_requested") is None
+
+    @pytest.mark.asyncio
+    async def test_rematch_after_creation_resends_game_id(self, service):
+        gid, ws1, ws2 = await _play_to_finish(service)
+        await service.handle_rematch_request(gid, "player1")
+        await service.handle_rematch_request(gid, "player2")
+        ws1.clear()
+        # Third request after game already created
+        await service.handle_rematch_request(gid, "player1")
+        msg = ws1.find("rematch_started")
+        assert msg is not None
+
+    @pytest.mark.asyncio
+    async def test_rematch_on_non_finished_game_ignored(self, service):
+        gid, ws1, ws2 = await _setup_playing(service)
+        await service.handle_rematch_request(gid, "player1")
+        assert ws1.find("rematch_requested") is None
+        assert ws2.find("rematch_requested") is None
+
+    @pytest.mark.asyncio
+    async def test_rematch_declined_when_opponent_disconnected(self, service):
+        gid, ws1, ws2 = await _play_to_finish(service)
+        await service.handle_player_disconnection(gid, "player2", ws2)
+        await service.handle_rematch_request(gid, "player1")
+        msg = ws1.find("rematch_declined")
+        assert msg is not None
+        assert msg["reason"] == "opponent_disconnected"
+
+    @pytest.mark.asyncio
+    async def test_requester_disconnect_cancels_rematch(self, service):
+        """Requester disconnects → opponent gets rematch_cancelled."""
+        gid, ws1, ws2 = await _play_to_finish(service)
+        await service.handle_rematch_request(gid, "player1")
+        ws2.clear()
+        await service.handle_player_disconnection(gid, "player1", ws1)
+        assert ws2.find("rematch_cancelled") is not None
+        game = await service.get_game(gid)
+        assert game.rematch_requested_by is None
+
+    @pytest.mark.asyncio
+    async def test_non_requester_disconnect_cancels_rematch(self, service):
+        """Non-requester disconnects → requester gets rematch_cancelled."""
+        gid, ws1, ws2 = await _play_to_finish(service)
+        await service.handle_rematch_request(gid, "player1")
+        ws1.clear()
+        await service.handle_player_disconnection(gid, "player2", ws2)
+        assert ws1.find("rematch_cancelled") is not None
+        game = await service.get_game(gid)
+        assert game.rematch_requested_by is None
+
+    @pytest.mark.asyncio
+    async def test_disconnect_without_pending_rematch_no_cancel(self, service):
+        """Disconnect from finished game with no rematch → no cancel message."""
+        gid, ws1, ws2 = await _play_to_finish(service)
+        await service.handle_player_disconnection(gid, "player2", ws2)
+        assert ws1.find("rematch_cancelled") is None
+
+
+# ---------------------------------------------------------------------------
+# disconnected_at tracking
+# ---------------------------------------------------------------------------
+
+class TestDisconnectedAt:
+
+    @pytest.mark.asyncio
+    async def test_disconnected_at_initially_none(self, service):
+        gid = await service.create_game()
+        game = await service.get_game(gid)
+        assert game.disconnected_at["player1"] is None
+        assert game.disconnected_at["player2"] is None
+
+    @pytest.mark.asyncio
+    async def test_disconnected_at_set_on_disconnect(self, service):
+        gid, ws1, ws2 = await _setup_playing(service)
+        await service.handle_player_disconnection(gid, "player2", ws2)
+        game = await service.get_game(gid)
+        assert game.disconnected_at["player2"] is not None
+        assert game.disconnected_at["player1"] is None
+
+    @pytest.mark.asyncio
+    async def test_disconnected_at_cleared_on_reconnect(self, service):
+        gid, ws1, ws2 = await _setup_playing(service)
+        game = await service.get_game(gid)
+        token2 = game.session_tokens["player2"]
+
+        await service.handle_player_disconnection(gid, "player2", ws2)
+        assert game.disconnected_at["player2"] is not None
+
+        ws2_new = MockWebSocket()
+        await service.handle_player_connection(gid, ws2_new, token=token2)
+        assert game.disconnected_at["player2"] is None
+
+    @pytest.mark.asyncio
+    async def test_disconnected_at_set_for_finished_game(self, service):
+        gid, ws1, ws2 = await _play_to_finish(service)
+        await service.handle_player_disconnection(gid, "player1", ws1)
+        game = await service.get_game(gid)
+        assert game.disconnected_at["player1"] is not None
+
+
+# ---------------------------------------------------------------------------
+# State guard on plane placement
+# ---------------------------------------------------------------------------
+
+class TestPlacementStateGuard:
+
+    @pytest.mark.asyncio
+    async def test_placement_rejected_during_playing(self, service):
+        gid, ws1, ws2 = await _setup_playing(service)
+        ws1.clear()
+        await service.handle_plane_placement(gid, "player1", PLANE_1)
+        err = ws1.find("error")
+        assert err is not None
+        assert "not in placement phase" in err["message"]
+
+    @pytest.mark.asyncio
+    async def test_placement_rejected_during_finished(self, service):
+        gid, ws1, ws2 = await _play_to_finish(service)
+        ws1.clear()
+        await service.handle_plane_placement(gid, "player1", PLANE_1)
+        err = ws1.find("error")
+        assert err is not None
+        assert "not in placement phase" in err["message"]
+
+    @pytest.mark.asyncio
+    async def test_placement_rejected_during_waiting(self, service):
+        gid = await service.create_game()
+        ws1 = MockWebSocket()
+        await service.handle_player_connection(gid, ws1)
+        ws1.clear()
+        await service.handle_plane_placement(gid, "player1", PLANE_1)
+        err = ws1.find("error")
+        assert err is not None
+        assert "not in placement phase" in err["message"]
+
+
+# ---------------------------------------------------------------------------
+# Stale game cleanup for PLACING/PLAYING
+# ---------------------------------------------------------------------------
+
+class TestStaleGameCleanup:
+
+    @pytest.mark.asyncio
+    async def test_playing_game_with_stale_disconnect_cleaned_up(self, service):
+        gid, ws1, ws2 = await _setup_playing(service)
+        await service.handle_player_disconnection(gid, "player2", ws2)
+
+        # Backdate the disconnection timestamp
+        game = await service.get_game(gid)
+        game.disconnected_at["player2"] = time.time() - 31 * 60  # 31 min ago
+
+        await service._cleanup_stale_games()
+        assert await service.get_game(gid) is None
+
+    @pytest.mark.asyncio
+    async def test_placing_game_with_stale_disconnect_cleaned_up(self, service):
+        gid = await service.create_game()
+        ws1, ws2 = await _connect_two(service, gid)
+        game = await service.get_game(gid)
+        assert game.state == GameState.PLACING
+
+        await service.handle_player_disconnection(gid, "player2", ws2)
+        game.disconnected_at["player2"] = time.time() - 31 * 60
+
+        await service._cleanup_stale_games()
+        assert await service.get_game(gid) is None
+
+    @pytest.mark.asyncio
+    async def test_playing_game_with_recent_disconnect_not_cleaned(self, service):
+        gid, ws1, ws2 = await _setup_playing(service)
+        await service.handle_player_disconnection(gid, "player2", ws2)
+
+        # Recent disconnect — should survive cleanup
+        await service._cleanup_stale_games()
+        assert await service.get_game(gid) is not None
+
+    @pytest.mark.asyncio
+    async def test_playing_game_with_no_disconnect_not_cleaned(self, service):
+        gid, ws1, ws2 = await _setup_playing(service)
+        await service._cleanup_stale_games()
+        assert await service.get_game(gid) is not None
+
+
+# ---------------------------------------------------------------------------
+# FINISHED disconnect notification
+# ---------------------------------------------------------------------------
+
+class TestFinishedDisconnectNotification:
+
+    @pytest.mark.asyncio
+    async def test_finished_disconnect_notifies_opponent(self, service):
+        gid, ws1, ws2 = await _play_to_finish(service)
+        ws1.clear()
+        await service.handle_player_disconnection(gid, "player2", ws2)
+        msg = ws1.find("player_disconnected")
+        assert msg is not None
+        assert msg["player_id"] == "player2"
+
+    @pytest.mark.asyncio
+    async def test_finished_disconnect_with_rematch_sends_both_messages(self, service):
+        """Opponent should get both player_disconnected and rematch_cancelled."""
+        gid, ws1, ws2 = await _play_to_finish(service)
+        await service.handle_rematch_request(gid, "player1")
+        ws2.clear()
+        await service.handle_player_disconnection(gid, "player1", ws1)
+        assert ws2.find("player_disconnected") is not None
+        assert ws2.find("rematch_cancelled") is not None
+

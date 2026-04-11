@@ -119,6 +119,9 @@ class GameStore:
             "session_tokens": game.session_tokens,
             "created_at": game.created_at,
             "finished_at": game.finished_at,
+            "rematch_requested_by": game.rematch_requested_by,
+            "rematch_game_id": game.rematch_game_id,
+            "disconnected_at": game.disconnected_at,
         }
 
     @staticmethod
@@ -135,5 +138,8 @@ class GameStore:
         game.session_tokens = data.get("session_tokens", {"player1": None, "player2": None})
         game.created_at = data.get("created_at", time.time())
         game.finished_at = data.get("finished_at")
+        game.rematch_requested_by = data.get("rematch_requested_by")
+        game.rematch_game_id = data.get("rematch_game_id")
+        game.disconnected_at = data.get("disconnected_at", {"player1": None, "player2": None})
         # players stay None — they reconnect via WebSocket
         return game
