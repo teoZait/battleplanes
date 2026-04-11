@@ -13,7 +13,7 @@ from typing import Dict, Optional
 import redis.asyncio as aioredis
 
 from domain.models import Game, Plane
-from domain.value_objects import GameState, GameMode
+from domain.value_objects import GameState, GameMode, PlayerID
 
 logger = logging.getLogger(__name__)
 
@@ -135,11 +135,11 @@ class GameStore:
         game.state = GameState(data["state"])
         game.current_turn = data["current_turn"]
         game.ready = data["ready"]
-        game.session_tokens = data.get("session_tokens", {"player1": None, "player2": None})
+        game.session_tokens = data.get("session_tokens", PlayerID.make_dict(lambda: None))
         game.created_at = data.get("created_at", time.time())
         game.finished_at = data.get("finished_at")
         game.rematch_requested_by = data.get("rematch_requested_by")
         game.rematch_game_id = data.get("rematch_game_id")
-        game.disconnected_at = data.get("disconnected_at", {"player1": None, "player2": None})
+        game.disconnected_at = data.get("disconnected_at", PlayerID.make_dict(lambda: None))
         # players stay None — they reconnect via WebSocket
         return game

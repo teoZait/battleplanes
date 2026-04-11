@@ -9,7 +9,7 @@ import time
 from typing import Dict, Optional
 import uuid
 from domain.models import Game
-from domain.value_objects import GameState, GameMode
+from domain.value_objects import GameState, GameMode, PlayerID
 from infrastructure.connection_manager import ConnectionManager
 from infrastructure.game_store import GameStore
 from metrics import (
@@ -86,7 +86,7 @@ class GameService:
                 stale_ids.append(game_id)
             elif game.state in (GameState.PLACING, GameState.PLAYING):
                 # Clean up games where a player has been disconnected too long
-                for pid in ("player1", "player2"):
+                for pid in PlayerID.both():
                     dc = game.disconnected_at.get(pid)
                     if dc and (now - dc) > _DISCONNECT_GAME_TTL:
                         stale_ids.append(game_id)
@@ -149,8 +149,7 @@ class GameService:
         if game.state == GameState.FINISHED:
             info["winner"] = game.check_winner()
             info["boards"] = {
-                "player1": game.boards["player1"],
-                "player2": game.boards["player2"],
+                pid: game.boards[pid] for pid in PlayerID.both()
             }
 
         return info
@@ -181,7 +180,7 @@ class GameService:
 
             if token:
                 # Reconnection — match the token to an existing slot
-                for pid in ("player1", "player2"):
+                for pid in PlayerID.both():
                     stored = game.session_tokens.get(pid)
                     if stored and secrets.compare_digest(stored, token):
                         player_id = pid
@@ -190,7 +189,7 @@ class GameService:
                     return None  # invalid / expired token
             else:
                 # First connection — only allow unclaimed slots (no token issued yet)
-                for pid in ("player1", "player2"):
+                for pid in PlayerID.both():
                     if game.session_tokens[pid] is None and game.players[pid] is None:
                         player_id = pid
                         break
@@ -206,7 +205,7 @@ class GameService:
                 game.session_tokens[player_id] = secrets.token_urlsafe(32)
 
             # State transition when the second player arrives
-            if player_id == "player2" and game.state == GameState.WAITING:
+            if player_id == PlayerID.PLAYER2 and game.state == GameState.WAITING:
                 game.state = GameState.PLACING
                 self._sync_game_gauges()
 
@@ -230,7 +229,7 @@ class GameService:
                 or (token and game.state == GameState.PLACING)
             )
             if send_resumed:
-                opponent = "player2" if player_id == "player1" else "player1"
+                opponent = PlayerID(player_id).opponent
                 opponent_board = (
                     game.boards[opponent]
                     if game.state == GameState.FINISHED
@@ -257,7 +256,7 @@ class GameService:
             # Sent on reconnection (token present) AND when a new player
             # joins a continued game that's already in PLAYING/FINISHED.
             if token or game.state in (GameState.PLAYING, GameState.FINISHED):
-                opponent = "player2" if player_id == "player1" else "player1"
+                opponent = PlayerID(player_id).opponent
                 await self.connection_manager.send_to_player(game_id, opponent, {
                     "type": "player_reconnected",
                     "player_id": player_id,
@@ -279,7 +278,7 @@ class GameService:
             })
             return
 
-        opponent = "player2" if player_id == "player1" else "player1"
+        opponent = PlayerID(player_id).opponent
         if game.players[opponent] is None:
             await self.connection_manager.send_to_player(game_id, player_id, {
                 "type": "error",
@@ -331,7 +330,7 @@ class GameService:
             })
             return
 
-        opponent = "player2" if player_id == "player1" else "player1"
+        opponent = PlayerID(player_id).opponent
         if game.players[opponent] is None:
             await self.connection_manager.send_to_player(game_id, player_id, {
                 "type": "error",
@@ -350,7 +349,7 @@ class GameService:
             return
         
         # Send attack result to both players
-        opponent = "player2" if player_id == "player1" else "player1"
+        opponent = PlayerID(player_id).opponent
         
         await self.connection_manager.send_to_player(game_id, player_id, {
             "type": "attack_result",
@@ -376,8 +375,8 @@ class GameService:
             game.finish_game()
             GAMES_FINISHED.inc()
             self._sync_game_gauges()
-            for pid in ("player1", "player2"):
-                opponent = "player2" if pid == "player1" else "player1"
+            for pid in PlayerID.both():
+                opponent = pid.opponent
                 await self.connection_manager.send_to_player(game_id, pid, {
                     "type": "game_over",
                     "winner": winner,
@@ -420,7 +419,7 @@ class GameService:
         # After a finished game, notify the opponent and cancel any
         # pending rematch so neither player gets stuck waiting.
         if game.state == GameState.FINISHED:
-            opponent = "player2" if player_id == "player1" else "player1"
+            opponent = PlayerID(player_id).opponent
             await self.connection_manager.send_to_player(game_id, opponent, {
                 "type": "player_disconnected",
                 "player_id": player_id,
@@ -457,7 +456,7 @@ class GameService:
             })
             return
 
-        opponent = "player2" if player_id == "player1" else "player1"
+        opponent = PlayerID(player_id).opponent
 
         # If the opponent isn't connected, a rematch isn't possible.
         opponent_connected = bool(

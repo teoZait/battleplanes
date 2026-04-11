@@ -5,11 +5,11 @@ import {
   createEmptyBoard,
   GameUIState,
 } from '../reducers/gameReducer';
-import type { CellStatus, ServerMessage } from '../hooks/UseGameWebSocket';
+import { type CellStatus, type ServerMessage, PLAYER1, PLAYER2 } from '../hooks/UseGameWebSocket';
 
 const baseState: GameUIState = {
   ...initialGameState,
-  playerId: 'player1',
+  playerId: PLAYER1,
   gameState: 'placing',
 };
 
