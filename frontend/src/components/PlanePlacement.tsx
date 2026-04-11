@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import './PlanePlacement.css';
 import { getPlanePositions } from '../helpers';
+import { type PlaneIndexMap, planeColorVars } from '../planeColors';
+import { usePlaneColors } from '../hooks/usePlaneColors';
 
 interface Plane {
   head_x: number;
@@ -17,10 +19,14 @@ interface PlanePlacementProps {
 type CellStatus = 'empty' | 'plane' | 'head' | 'hover' | 'invalid';
 
 const PlanePlacement = ({ onPlanesPlaced, disabled, maxPlanes = 2 }: PlanePlacementProps) => {
+  const palette = usePlaneColors();
   const [board, setBoard] = useState<CellStatus[][]>(
     Array(10).fill(null).map(() => Array(10).fill('empty'))
   );
   const [placedPlanes, setPlacedPlanes] = useState<Plane[]>([]);
+  const [planeMap, setPlaneMap] = useState<PlaneIndexMap>(
+    () => Array.from({ length: 10 }, () => Array(10).fill(null))
+  );
   const [orientation, setOrientation] = useState<'up' | 'down' | 'left' | 'right'>('up');
   const [hoveredCells, setHoveredCells] = useState<{ x: number; y: number; isValid: boolean }[]>([]);
   const [shaking, setShaking] = useState(false);
@@ -76,7 +82,13 @@ const PlanePlacement = ({ onPlanesPlaced, disabled, maxPlanes = 2 }: PlanePlacem
       }
     });
 
+    const newPlaneMap = planeMap.map(row => [...row]);
+    positions.forEach((pos: { x: number; y: number }) => {
+      newPlaneMap[pos.y][pos.x] = placedPlanes.length;
+    });
+
     setBoard(newBoard);
+    setPlaneMap(newPlaneMap);
     setPlacedPlanes([...placedPlanes, { head_x: x, head_y: y, orientation }]);
     setHoveredCells([]);
     setTouchPreviewPos(null);
@@ -104,6 +116,7 @@ const PlanePlacement = ({ onPlanesPlaced, disabled, maxPlanes = 2 }: PlanePlacem
 
   const handleReset = () => {
     setBoard(Array(10).fill(null).map(() => Array(10).fill('empty')));
+    setPlaneMap(Array.from({ length: 10 }, () => Array(10).fill(null)));
     setPlacedPlanes([]);
     setHoveredCells([]);
   };
@@ -142,10 +155,14 @@ const PlanePlacement = ({ onPlanesPlaced, disabled, maxPlanes = 2 }: PlanePlacem
           <div key={y} className="board-row">
             {row.map((cell, x) => {
               const { isHovered, isValid, isHead } = isCellHovered(x, y);
+              const pidx = planeMap[y][x];
+              const cellColor = pidx != null && palette ? palette.colors[pidx] : undefined;
+              const previewColor = palette ? palette.colors[placedPlanes.length] : undefined;
               return (
                 <div
                   key={`${x}-${y}`}
                   className={`cell ${cell} ${isHovered ? (isValid ? 'hovered-valid' : 'hovered-invalid') : ''}`}
+                  style={cellColor ? planeColorVars(cellColor) : undefined}
                   onClick={() => handleCellClick(x, y)}
                   onMouseEnter={() => previewPlane(x, y)}
                   onMouseLeave={() => setHoveredCells([])}
@@ -169,7 +186,10 @@ const PlanePlacement = ({ onPlanesPlaced, disabled, maxPlanes = 2 }: PlanePlacem
 
                   {/* Show hover preview */}
                   {isHovered && cell === 'empty' && (
-                    <div className={`plane-preview ${isValid ? 'valid' : 'invalid'}`}>
+                    <div
+                      className={`plane-preview ${isValid ? 'valid' : 'invalid'}`}
+                      style={isValid && previewColor ? planeColorVars(previewColor) : undefined}
+                    >
                       {isHead ? (
                         <div className="preview-head">
                           <div className="preview-body"></div>
@@ -194,6 +214,12 @@ const PlanePlacement = ({ onPlanesPlaced, disabled, maxPlanes = 2 }: PlanePlacem
         <ul>
           {Array.from({ length: maxPlanes }, (_, i) => (
             <li key={i} className={placedPlanes.length > i ? 'placed' : placedPlanes.length === i ? 'current' : ''}>
+              {palette && (
+                <span
+                  className="plane-color-dot"
+                  style={{ background: palette.colors[i]?.swatch, '--dot-glow': palette.colors[i]?.glow } as React.CSSProperties}
+                />
+              )}
               Plane {i + 1} {placedPlanes.length > i && '✓'}
             </li>
           ))}

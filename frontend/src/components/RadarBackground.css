@@ -1,0 +1,210 @@
+/* ═══════════════════════════════════════════
+   FUTURISTIC TACTICAL RADAR BACKGROUND
+   ═══════════════════════════════════════════ */
+
+/* ── Radar rings ── */
+.radar-rings {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+}
+.radar-rings::before {
+  content: ''; position: absolute; inset: 0;
+  background:
+    radial-gradient(circle at 50% 50%, transparent 6%, rgba(0,210,255,0.07) 6.2%, transparent 6.5%),
+    radial-gradient(circle at 50% 50%, transparent 14%, rgba(0,210,255,0.055) 14.2%, transparent 14.5%),
+    radial-gradient(circle at 50% 50%, transparent 22%, rgba(0,210,255,0.045) 22.2%, transparent 22.5%),
+    radial-gradient(circle at 50% 50%, transparent 30%, rgba(0,210,255,0.035) 30.2%, transparent 30.5%),
+    radial-gradient(circle at 50% 50%, transparent 38%, rgba(0,210,255,0.028) 38.2%, transparent 38.5%),
+    radial-gradient(circle at 50% 50%, transparent 46%, rgba(0,210,255,0.022) 46.2%, transparent 46.5%),
+    radial-gradient(circle at 50% 50%, transparent 54%, rgba(0,210,255,0.018) 54.2%, transparent 54.5%);
+}
+.radar-rings::after {
+  content: ''; position: absolute;
+  top: 50%; left: 50%; width: 6px; height: 6px;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 210, 255, 0.4);
+  border-radius: 50%;
+  box-shadow: 0 0 20px rgba(0, 210, 255, 0.3), 0 0 60px rgba(0, 210, 255, 0.1);
+}
+
+/* ── Crosshairs ── */
+.crosshairs {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+}
+.crosshairs::before {
+  content: ''; position: absolute; inset: 0;
+  background:
+    linear-gradient(0deg, transparent calc(50% - 0.5px), rgba(0,210,255,0.05) 50%, transparent calc(50% + 0.5px)),
+    linear-gradient(90deg, transparent calc(50% - 0.5px), rgba(0,210,255,0.05) 50%, transparent calc(50% + 0.5px));
+}
+.crosshairs::after {
+  content: ''; position: absolute; inset: 0;
+  background:
+    linear-gradient(45deg, transparent calc(50% - 0.3px), rgba(0,210,255,0.02) 50%, transparent calc(50% + 0.3px)),
+    linear-gradient(-45deg, transparent calc(50% - 0.3px), rgba(0,210,255,0.02) 50%, transparent calc(50% + 0.3px));
+}
+
+/* ── Sweep beam (primary) ── */
+.sweep-primary {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 1;
+}
+.sweep-primary::before {
+  content: ''; position: absolute;
+  top: 50%; left: 50%; width: 140vmax; height: 140vmax;
+  margin-top: -70vmax; margin-left: -70vmax;
+  transform-origin: 50% 50%;
+  background: conic-gradient(
+    from 0deg at 50% 50%,
+    transparent 0deg,
+    rgba(0, 210, 255, 0.0) 0deg,
+    rgba(0, 210, 255, 0.12) 8deg,
+    rgba(0, 210, 255, 0.06) 20deg,
+    rgba(0, 210, 255, 0.02) 40deg,
+    transparent 60deg
+  );
+  animation: radar-sweep 6s linear infinite;
+}
+
+/* ── Sweep beam (secondary) ── */
+.sweep-secondary {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 1;
+}
+.sweep-secondary::before {
+  content: ''; position: absolute;
+  top: 50%; left: 50%; width: 140vmax; height: 140vmax;
+  margin-top: -70vmax; margin-left: -70vmax;
+  transform-origin: 50% 50%;
+  background: conic-gradient(
+    from 180deg at 50% 50%,
+    transparent 0deg,
+    rgba(120, 80, 255, 0.06) 5deg,
+    rgba(120, 80, 255, 0.02) 25deg,
+    transparent 45deg
+  );
+  animation: radar-sweep 10s linear infinite reverse;
+}
+
+@keyframes radar-sweep { to { transform: rotate(360deg); } }
+
+/* ── Pulsing ring animation ── */
+.pulse-rings {
+  position: fixed; pointer-events: none; z-index: 0;
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
+}
+.pulse-ring {
+  position: absolute; border-radius: 50%;
+  border: 1px solid rgba(0, 210, 255, 0.15);
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  animation: radar-pulse-out 4s ease-out infinite;
+}
+.pulse-ring:nth-child(2) { animation-delay: 1.3s; }
+.pulse-ring:nth-child(3) { animation-delay: 2.6s; }
+@keyframes radar-pulse-out {
+  0% { width: 0; height: 0; opacity: 0.5; transform: translate(-50%, -50%) scale(1); }
+  100% { width: 80vmax; height: 80vmax; opacity: 0; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* ── Hex grid overlay ── */
+.hex-grid {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: 0.4;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='52'%3E%3Cpath d='M30 1 L56 14 L56 38 L30 51 L4 38 L4 14 Z' fill='none' stroke='rgba(0,210,255,0.06)' stroke-width='0.5'/%3E%3C/svg%3E");
+  background-size: 60px 52px;
+}
+
+/* ── Scanline effect ── */
+.scanlines {
+  position: fixed; inset: 0; pointer-events: none; z-index: 2; opacity: 0.3;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 0, 0, 0.08) 2px,
+    rgba(0, 0, 0, 0.08) 4px
+  );
+}
+
+/* ── HUD corner brackets ── */
+.hud-corners {
+  position: fixed; inset: 20px; pointer-events: none; z-index: 3;
+}
+.hud-corner {
+  position: absolute; width: 40px; height: 40px;
+}
+.hud-corner::before, .hud-corner::after {
+  content: ''; position: absolute; background: rgba(0, 210, 255, 0.15);
+}
+.hud-corner.tl { top: 0; left: 0; }
+.hud-corner.tl::before { top: 0; left: 0; width: 40px; height: 1px; }
+.hud-corner.tl::after { top: 0; left: 0; width: 1px; height: 40px; }
+.hud-corner.tr { top: 0; right: 0; }
+.hud-corner.tr::before { top: 0; right: 0; width: 40px; height: 1px; }
+.hud-corner.tr::after { top: 0; right: 0; width: 1px; height: 40px; }
+.hud-corner.bl { bottom: 0; left: 0; }
+.hud-corner.bl::before { bottom: 0; left: 0; width: 40px; height: 1px; }
+.hud-corner.bl::after { bottom: 0; left: 0; width: 1px; height: 40px; }
+.hud-corner.br { bottom: 0; right: 0; }
+.hud-corner.br::before { bottom: 0; right: 0; width: 40px; height: 1px; }
+.hud-corner.br::after { bottom: 0; right: 0; width: 1px; height: 40px; }
+
+/* ── HUD data readouts ── */
+.hud-data {
+  position: fixed; pointer-events: none; z-index: 3;
+  font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+  color: rgba(0, 210, 255, 0.2); font-family: 'Courier New', monospace;
+}
+.hud-data.top-left { top: 28px; left: 68px; }
+.hud-data.top-right { top: 28px; right: 68px; text-align: right; }
+.hud-data.bottom-left { bottom: 28px; left: 68px; }
+.hud-data.bottom-right { bottom: 28px; right: 68px; text-align: right; }
+
+/* ── Floating particles ── */
+.particles {
+  position: fixed; inset: 0; pointer-events: none; z-index: 1; overflow: hidden;
+}
+.particle {
+  position: absolute; width: 2px; height: 2px; border-radius: 50%;
+  background: rgba(0, 210, 255, 0.3);
+  box-shadow: 0 0 4px rgba(0, 210, 255, 0.2);
+  animation: radar-float-up linear infinite;
+}
+.particle:nth-child(1)  { left:  3%; animation-duration: 12s; animation-delay: 0s; }
+.particle:nth-child(2)  { left: 10%; animation-duration: 15s; animation-delay: 2s;   width: 1px; height: 1px; }
+.particle:nth-child(3)  { left: 17%; animation-duration: 10s; animation-delay: 4s; }
+.particle:nth-child(4)  { left: 23%; animation-duration: 18s; animation-delay: 1s;   width: 1px; height: 1px; }
+.particle:nth-child(5)  { left: 30%; animation-duration: 13s; animation-delay: 3s; }
+.particle:nth-child(6)  { left: 37%; animation-duration: 16s; animation-delay: 5s;   width: 1px; height: 1px; }
+.particle:nth-child(7)  { left: 43%; animation-duration: 14s; animation-delay: 7s; }
+.particle:nth-child(8)  { left: 50%; animation-duration: 11s; animation-delay: 6s;   width: 3px; height: 3px; opacity: 0.5; }
+.particle:nth-child(9)  { left: 57%; animation-duration: 17s; animation-delay: 0.5s; }
+.particle:nth-child(10) { left: 63%; animation-duration: 12s; animation-delay: 3.5s; width: 1px; height: 1px; }
+.particle:nth-child(11) { left: 70%; animation-duration: 14s; animation-delay: 1.5s; }
+.particle:nth-child(12) { left: 76%; animation-duration: 19s; animation-delay: 4.5s; width: 1px; height: 1px; }
+.particle:nth-child(13) { left: 82%; animation-duration: 11s; animation-delay: 6.5s; }
+.particle:nth-child(14) { left: 88%; animation-duration: 15s; animation-delay: 2.5s; width: 1px; height: 1px; }
+.particle:nth-child(15) { left: 94%; animation-duration: 13s; animation-delay: 5.5s; }
+.particle:nth-child(16) { left:  7%; animation-duration: 16s; animation-delay: 8s;   width: 1px; height: 1px; }
+.particle:nth-child(17) { left: 34%; animation-duration: 20s; animation-delay: 9s; }
+.particle:nth-child(18) { left: 47%; animation-duration: 13s; animation-delay: 3s;   width: 1px; height: 1px; }
+.particle:nth-child(19) { left: 66%; animation-duration: 17s; animation-delay: 7.5s; width: 3px; height: 3px; opacity: 0.4; }
+.particle:nth-child(20) { left: 91%; animation-duration: 14s; animation-delay: 1s; }
+@keyframes radar-float-up {
+  0% { transform: translateY(100vh) scale(0); opacity: 0; }
+  10% { opacity: 1; transform: translateY(90vh) scale(1); }
+  90% { opacity: 1; }
+  100% { transform: translateY(-10vh) scale(0); opacity: 0; }
+}
+
+/* ── Ambient glow ── */
+.ambient-glow {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(ellipse 300px 300px at 50% 50%, rgba(0, 210, 255, 0.05) 0%, transparent 60%);
+}
+
+/* ── Vignette ── */
+.vignette {
+  position: fixed; inset: 0; pointer-events: none; z-index: 2;
+  background: radial-gradient(ellipse at 50% 50%, transparent 50%, rgba(0,0,0,0.4) 100%);
+}

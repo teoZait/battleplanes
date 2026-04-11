@@ -115,14 +115,14 @@
 }
 
 .plane-preview.valid .preview-body {
-  background: linear-gradient(135deg, rgba(0, 210, 255, 0.6) 0%, rgba(0, 160, 215, 0.6) 50%, rgba(0, 210, 255, 0.6) 100%);
-  border: 2px solid #74d7ff;
-  box-shadow: inset 0 0 10px rgba(0, 210, 255, 0.3);
+  background: linear-gradient(135deg, var(--pc-body, rgba(0, 210, 255, 0.6)) 0%, var(--pc-body-dark, rgba(0, 160, 215, 0.6)) 50%, var(--pc-body, rgba(0, 210, 255, 0.6)) 100%);
+  border: 2px solid var(--pc-border, #74d7ff);
+  box-shadow: inset 0 0 10px var(--pc-glow, rgba(0, 210, 255, 0.3));
 }
 
 .plane-preview.valid .preview-head .preview-body {
-  background: linear-gradient(135deg, rgba(255, 184, 77, 0.6) 0%, rgba(255, 152, 50, 0.6) 50%, rgba(255, 184, 77, 0.6) 100%);
-  border: 2px solid #ffb84d;
+  background: linear-gradient(135deg, var(--pc-head, rgba(255, 184, 77, 0.6)) 0%, var(--pc-head-dark, rgba(255, 152, 50, 0.6)) 50%, var(--pc-head, rgba(255, 184, 77, 0.6)) 100%);
+  border: 2px solid var(--pc-head-border, #ffb84d);
 }
 
 .plane-preview.invalid .preview-body {
@@ -131,8 +131,8 @@
 }
 
 .plane-preview.invalid .preview-head .preview-body {
-  background: linear-gradient(135deg, rgba(255, 184, 77, 0.4) 0%, rgba(255, 152, 50, 0.4) 50%, rgba(255, 184, 77, 0.4) 100%);
-  border: 2px solid #ffb84d;
+  background: linear-gradient(135deg, rgba(255, 51, 102, 0.3) 0%, rgba(255, 30, 70, 0.3) 50%, rgba(255, 51, 102, 0.3) 100%);
+  border: 2px solid #ff3366;
 }
 
 .preview-segment,
@@ -158,10 +158,21 @@
   height: 14px;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.6);
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.7) 25%, rgba(255, 220, 150, 0.4) 50%, transparent 70%);
-  box-shadow: 0 0 6px rgba(255, 220, 150, 0.5);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.7) 25%, var(--pc-cockpit-glow, rgba(255, 220, 150, 0.4)) 50%, transparent 70%);
+  box-shadow: 0 0 6px var(--pc-cockpit-glow, rgba(255, 220, 150, 0.5));
   z-index: 10;
   opacity: 0.8;
+}
+
+/* Plane list color indicator */
+.plane-color-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+  box-shadow: 0 0 6px var(--dot-glow, transparent);
 }
 
 .plane-segment {
@@ -181,17 +192,17 @@
 .plane-segment .plane-body {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #2e8b7a 0%, #1f7a6d 50%, #2e8b7a 100%);
-  border: 2px solid rgba(72, 219, 195, 0.8);
+  background: linear-gradient(135deg, var(--pc-body, #2e8b7a) 0%, var(--pc-body-dark, #1f7a6d) 50%, var(--pc-body, #2e8b7a) 100%);
+  border: 2px solid var(--pc-border, rgba(72, 219, 195, 0.8));
   border-radius: 3px;
   position: relative;
-  box-shadow: inset 0 0 8px rgba(72, 219, 195, 0.3);
+  box-shadow: inset 0 0 8px var(--pc-glow, rgba(72, 219, 195, 0.3));
 }
 
 .plane-segment.head .plane-body {
-  background: linear-gradient(135deg, #ffb84d 0%, #ff9827 50%, #ffb84d 100%);
-  border: 2px solid #ffb84d;
-  box-shadow: inset 0 0 8px rgba(255, 184, 77, 0.3);
+  background: linear-gradient(135deg, var(--pc-head, #ffb84d) 0%, var(--pc-head-dark, #ff9827) 50%, var(--pc-head, #ffb84d) 100%);
+  border: 2px solid var(--pc-head-border, #ffb84d);
+  box-shadow: inset 0 0 8px var(--pc-head-glow, rgba(255, 184, 77, 0.3));
 }
 
 .cockpit {
@@ -203,15 +214,15 @@
   height: 16px;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.9);
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 25%, rgba(255, 220, 150, 0.6) 50%, transparent 70%);
-  box-shadow: 0 0 8px rgba(255, 220, 150, 0.8), 0 0 3px rgba(255, 255, 255, 0.6) inset;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 25%, var(--pc-cockpit-glow, rgba(255, 220, 150, 0.6)) 50%, transparent 70%);
+  box-shadow: 0 0 8px var(--pc-cockpit-glow, rgba(255, 220, 150, 0.8)), 0 0 3px rgba(255, 255, 255, 0.6) inset;
   z-index: 10;
   animation: cockpit-glow 2s ease-in-out infinite;
 }
 
 @keyframes cockpit-glow {
-  0%, 100% { box-shadow: 0 0 8px rgba(255, 220, 150, 0.8), 0 0 3px rgba(255, 255, 255, 0.6) inset; }
-  50% { box-shadow: 0 0 15px rgba(255, 220, 150, 1), 0 0 25px rgba(255, 184, 77, 0.5), 0 0 5px rgba(255, 255, 255, 0.8) inset; }
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.4); }
 }
 
 .plane-list {

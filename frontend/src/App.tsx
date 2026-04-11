@@ -1,11 +1,13 @@
 import { useState, useReducer, useCallback, useEffect, useRef } from 'react';
 import './App.css';
+import RadarBackground from './components/RadarBackground';
 import GameBoard from './components/GameBoard';
 import PlanePlacement from './components/PlanePlacement';
 import GameInfo from './components/GameInfo';
 import ZoomableBoard from './components/ZoomableBoard';
 import FinishedGameView, { FinishedGameData } from './components/FinishedGameView';
 import { useGameWebSocket, CellStatus } from './hooks/UseGameWebSocket';
+import { PlaneColorProvider } from './hooks/usePlaneColors';
 import {
   gameReducer,
   initialGameState,
@@ -182,7 +184,9 @@ function App() {
   }, [send]);
 
   return (
+    <PlaneColorProvider gameId={gameId}>
     <div className="App">
+      <RadarBackground />
       {showBattleFlash && (
         <div className="battle-flash">
           <span>Battle!</span>
@@ -466,6 +470,7 @@ function App() {
         </>
       )}
     </div>
+    </PlaneColorProvider>
   );
 }
 
