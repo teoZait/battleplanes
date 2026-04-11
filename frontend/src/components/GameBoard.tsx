@@ -1,4 +1,5 @@
 import { CellStatus } from '../hooks/UseGameWebSocket';
+import { useBoardColors } from '../hooks/usePlaneColors';
 import './GameBoard.css';
 
 interface GameBoardProps {
@@ -13,6 +14,7 @@ const columnLabels = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
 const rowLabels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 
 const GameBoard = ({ board, onCellClick, isOwnBoard, isMyTurn, gameFinished }: GameBoardProps) => {
+  const { getStyle } = useBoardColors(board);
   const isActive = !isOwnBoard && isMyTurn;
   const isDimmed = !isOwnBoard && isMyTurn === false;
   const showPlanes = isOwnBoard || gameFinished;
@@ -40,6 +42,7 @@ const GameBoard = ({ board, onCellClick, isOwnBoard, isMyTurn, gameFinished }: G
             <div
               key={`${x}-${y}`}
               className={`cell ${cell} ${!isOwnBoard ? 'clickable enemy' : ''} ${isDimmed ? 'disabled' : ''}`}
+              style={getStyle(x, y)}
               onClick={() => onCellClick(x, y)}
             >
               {(cell === 'plane' as CellStatus) && showPlanes && (
