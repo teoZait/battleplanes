@@ -50,3 +50,7 @@ dist-ssr/
 
 # Docker
 *.log
+
+# Blue-green deploy runtime state
+active_color
+proxy/active.conf
