@@ -32,7 +32,7 @@ echo "==> Active: $CURRENT -> deploying: $NEXT"
 
 # ── Start infrastructure (redis, prometheus, grafana — not proxy yet) ──
 echo "==> Ensuring infrastructure is running..."
-$COMPOSE up -d redis prometheus grafana
+$COMPOSE up -d --remove-orphans redis prometheus grafana
 
 # ── Build and start the new color ──
 echo "==> Building $NEXT..."
@@ -61,7 +61,7 @@ fi
 echo "    backend-$NEXT is healthy"
 
 echo "==> Waiting for frontend-$NEXT to be healthy..."
-if ! timeout 60 bash -c "
+if ! timeout 90 bash -c "
     until [ \"\$(docker inspect -f '{{.State.Health.Status}}' battleplanes-frontend-$NEXT 2>/dev/null)\" = \"healthy\" ]; do
         sleep 2
     done
