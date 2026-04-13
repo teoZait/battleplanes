@@ -98,6 +98,7 @@ services:
       - "127.0.0.1:9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus-targets.json:/etc/prometheus/targets.json
       - prometheus_data:/prometheus
     networks:
       - battleplanes-network

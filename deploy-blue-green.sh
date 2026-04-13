@@ -83,6 +83,17 @@ echo "==> Switching proxy to $NEXT..."
 cat "proxy/nginx-$NEXT.conf" > proxy/active.conf
 docker exec battleplanes-proxy nginx -s reload
 
+# ── Update Prometheus to scrape new color ──
+cat > prometheus-targets.json <<EOF
+[
+  {
+    "targets": ["backend-$NEXT:8000"],
+    "labels": {"color": "$NEXT"}
+  }
+]
+EOF
+echo "    prometheus now scrapes backend-$NEXT"
+
 echo "$NEXT" > "$COLOR_FILE"
 echo "    proxy now routes to $NEXT"
 
