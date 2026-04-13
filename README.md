@@ -73,7 +73,7 @@ Planes can be rotated in 4 orientations: UP, RIGHT, DOWN, LEFT.
 | State      | Redis 7 (async, authenticated)                          |
 | Realtime   | WebSockets with session-token auth and reconnection     |
 | Monitoring | Prometheus, Grafana (dashboards + Slack alerts)         |
-| Infra      | Docker Compose (dev), Kubernetes + Nginx (prod)         |
+| Infra      | Docker Compose, blue-green deploys, Nginx reverse proxy |
 | Testing    | pytest + pytest-asyncio (backend), Vitest (frontend)    |
 
 ---
@@ -88,30 +88,29 @@ Planes can be rotated in 4 orientations: UP, RIGHT, DOWN, LEFT.
       └────────────┬──────────────┘
                    │
                    v
-              ┌────────────┐
-              │   Nginx    │ :80 / :443
-              │  (reverse  │  TLS termination
-              │   proxy)   │  security headers
-              └─────┬──────┘
-                    │
-         ┌──────────┼──────────┐
-         │          │          │
-    /api/*      /ws/*     everything else
-         │     WebSocket   try_files → index.html
-         │      upgrade
-         │          │
-         v          v
       ┌───────────────────────────┐
-      │       FastAPI Backend      │ :8000
-      │   REST API + WebSocket     │
-      │   rate limiting, CORS      │
-      │   session-token auth       │
+      │       Cloudflare           │  TLS termination
       └────────────┬──────────────┘
-                   │
+                   │ :80
                    v
       ┌───────────────────────────┐
-      │         Redis 7            │ :6379
-      │   game state (JSON + TTL)  │
+      │      nginx-proxy           │  never restarted during deploys
+      │   reverse proxy + routing  │  config swap via nginx -s reload
+      └─────┬─────────────┬───────┘
+            │             │
+     /api/* & /ws/*    /* (static)
+            │             │
+            v             v
+      ┌───────────┐ ┌───────────┐
+      │  backend   │ │ frontend  │   blue-green: only one color
+      │  -blue or  │ │ -blue or  │   is active at a time
+      │  -green    │ │ -green    │
+      └──────┬─────┘ └───────────┘
+             │
+             v
+      ┌───────────────────────────┐
+      │         Redis 7            │  never restarted during deploys
+      │   game state (JSON + TTL)  │  RDB snapshots → Docker volume
       │   password auth            │
       └───────────────────────────┘
 ```
@@ -229,6 +228,9 @@ battleplanes/
 │   ├── nginx.conf                     # Nginx config (TLS, headers)
 │   ├── package.json
 │   └── Dockerfile                     # Multi-stage build
+├── proxy/                              # Blue-green reverse proxy configs
+│   ├── nginx-blue.conf                 # Routes to backend-blue + frontend-blue
+│   └── nginx-green.conf               # Routes to backend-green + frontend-green
 ├── k8s/                               # Kubernetes manifests
 │   ├── backend-deployment.yaml
 │   ├── frontend-deployment.yaml
@@ -237,6 +239,7 @@ battleplanes/
 │   ├── cert-issuer.yaml
 │   └── namespace.yaml
 ├── prometheus.yml                      # Prometheus scrape config
+├── prometheus-targets.json             # Dynamic scrape targets (updated by deploy)
 ├── grafana/
 │   ├── provisioning/
 │   │   ├── datasources/prometheus.yml  # Auto-configured data source
@@ -244,8 +247,10 @@ battleplanes/
 │   │   └── alerting/                   # Contact points, policies, rules
 │   └── dashboards/
 │       └── battleplanes.json           # Pre-built overview dashboard
-├── docker compose.yaml                # Local development
-└── docker compose.prod.yaml           # Production compose
+├── docker-compose.yaml                 # Local development
+├── docker-compose.prod.yaml            # Production (blue-green services)
+├── deploy.sh                           # Initial production setup
+└── deploy-blue-green.sh                # Zero-downtime deploy script
 ```
 
 ---
@@ -372,10 +377,55 @@ Then open `http://localhost:3000` on your machine.
 
 ## Deployment
 
-### Docker Compose (Production)
+### How It Works
+
+Production uses **blue-green deployment** for zero-downtime releases. Two identical sets of backend + frontend containers (blue and green) take turns being the active set. An nginx reverse proxy sits in front and switches between them via `nginx -s reload`.
+
+```
+push to main → CI SSHs in → build new color → wait healthy → nginx reload → kill old color
+```
+
+What stays running during every deploy:
+- **Redis** — never restarted, all game state persists. RDB snapshots to a Docker volume.
+- **nginx-proxy** — never restarted, only its config is swapped and gracefully reloaded.
+- **Prometheus + Grafana** — untouched, persistent volumes.
+
+What gets swapped:
+- **backend-{blue/green}** — new container starts, loads all games from Redis, becomes healthy, then receives traffic.
+- **frontend-{blue/green}** — static files only, no state to lose.
+- **WebSocket connections** — drop briefly when the old backend is killed. Clients auto-reconnect with session tokens and recover full game state.
+
+See [blue-green-architecture.html](blue-green-architecture.html) for a detailed visual walkthrough.
+
+### Initial Setup (on the DigitalOcean droplet)
 
 ```bash
-REDIS_PASSWORD=your-secure-password docker compose -f docker compose.prod.yaml up --build -d
+git clone <repo> /opt/battleplanes
+cd /opt/battleplanes
+./deploy.sh yourdomain.com
+```
+
+This creates `.env` with a generated Redis password and runs the first blue-green deploy.
+
+### Subsequent Deploys (automatic)
+
+Every push to `main` triggers a GitHub Action that SSHs into the droplet and runs `deploy-blue-green.sh`. The script:
+
+1. Acquires a file lock (prevents concurrent deploys)
+2. Reads `active_color` to determine which color to deploy next
+3. Builds and starts the new color alongside the old
+4. Waits for health checks (rolls back on failure)
+5. Swaps the proxy config and runs `nginx -s reload`
+6. Updates Prometheus scrape targets to the new color
+7. Waits 60s for connection draining, then stops the old color
+8. Prunes unused Docker images
+
+### Manual Deploy
+
+```bash
+cd /opt/battleplanes
+git pull origin main
+bash deploy-blue-green.sh
 ```
 
 ### Kubernetes

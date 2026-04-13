@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ─── Battleplanes Production Deploy Script ───
-# Run this ON the DigitalOcean droplet after copying the project.
+# ─── Battleplanes Initial Production Setup ───
+# Run this ON the DigitalOcean droplet for the first deploy.
 # Usage: ./deploy.sh yourdomain.com
+#
+# Subsequent deploys are handled by deploy-blue-green.sh (called by CI).
 
 DOMAIN="${1:?Usage: ./deploy.sh DOMAIN}"
 
-echo "==> Deploying battleplanes to ${DOMAIN}"
+echo "==> Setting up battleplanes for ${DOMAIN}"
 
 # ── 1. Generate .env if it doesn't exist ──
 if [ ! -f .env ]; then
@@ -21,21 +23,13 @@ else
     echo "==> .env already exists, keeping it"
 fi
 
-# Source .env so variables are available
-set -a; source .env; set +a
-
-# ── 2. Build and start ──
-echo "==> Building containers..."
-docker compose -f docker-compose.yaml -f docker-compose.prod.yaml build
-
-echo "==> Starting services..."
-docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up -d
+# ── 2. Run blue-green deploy ──
+echo "==> Running initial blue-green deploy..."
+bash deploy-blue-green.sh
 
 echo ""
-echo "==> Done! Your app is running on port 80."
+echo "==> Setup complete! Your app is running on port 80."
 echo "==> Make sure Cloudflare is proxying ${DOMAIN} to this server."
 echo ""
-echo "Useful commands:"
-echo "  docker compose -f docker-compose.yaml -f docker-compose.prod.yaml logs -f"
-echo "  docker compose -f docker-compose.yaml -f docker-compose.prod.yaml down"
-echo "  docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up -d"
+echo "Subsequent deploys are automatic via GitHub Actions."
+echo "Manual deploy: bash deploy-blue-green.sh"

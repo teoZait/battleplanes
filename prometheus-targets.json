@@ -1,0 +1,6 @@
+[
+  {
+    "targets": ["backend-blue:8000"],
+    "labels": {"color": "blue"}
+  }
+]
