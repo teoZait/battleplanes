@@ -56,55 +56,15 @@
   background: conic-gradient(
     from 0deg at 50% 50%,
     transparent 0deg,
-    rgba(0, 210, 255, 0.0) 0deg,
-    rgba(0, 210, 255, 0.12) 8deg,
-    rgba(0, 210, 255, 0.06) 20deg,
-    rgba(0, 210, 255, 0.02) 40deg,
-    transparent 60deg
+    rgba(0, 210, 255, 0.35) 0.5deg,
+    rgba(0, 210, 255, 0.18) 1.5deg,
+    rgba(0, 210, 255, 0.06) 4deg,
+    transparent 8deg
   );
-  animation: radar-sweep 6s linear infinite;
-}
-
-/* ── Sweep beam (secondary) ── */
-.sweep-secondary {
-  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-  pointer-events: none; z-index: 1;
-}
-.sweep-secondary::before {
-  content: ''; position: absolute;
-  top: 50%; left: 50%; width: 140vmax; height: 140vmax;
-  margin-top: -70vmax; margin-left: -70vmax;
-  transform-origin: 50% 50%;
-  background: conic-gradient(
-    from 180deg at 50% 50%,
-    transparent 0deg,
-    rgba(120, 80, 255, 0.06) 5deg,
-    rgba(120, 80, 255, 0.02) 25deg,
-    transparent 45deg
-  );
-  animation: radar-sweep 10s linear infinite reverse;
+  animation: radar-sweep 16s linear infinite;
 }
 
 @keyframes radar-sweep { to { transform: rotate(360deg); } }
-
-/* ── Pulsing ring animation ── */
-.pulse-rings {
-  position: fixed; pointer-events: none; z-index: 0;
-  top: 50%; left: 50%; transform: translate(-50%, -50%);
-}
-.pulse-ring {
-  position: absolute; border-radius: 50%;
-  border: 1px solid rgba(0, 210, 255, 0.15);
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%) scale(0);
-  animation: radar-pulse-out 4s ease-out infinite;
-}
-.pulse-ring:nth-child(2) { animation-delay: 1.3s; }
-.pulse-ring:nth-child(3) { animation-delay: 2.6s; }
-@keyframes radar-pulse-out {
-  0% { width: 0; height: 0; opacity: 0.5; transform: translate(-50%, -50%) scale(1); }
-  100% { width: 80vmax; height: 80vmax; opacity: 0; transform: translate(-50%, -50%) scale(1); }
-}
 
 /* ── Hex grid overlay ── */
 .hex-grid {

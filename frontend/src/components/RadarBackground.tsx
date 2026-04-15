@@ -8,12 +8,6 @@ export default function RadarBackground() {
       <div className="crosshairs" />
       <div className="hex-grid" />
       <div className="sweep-primary" />
-      <div className="sweep-secondary" />
-      <div className="pulse-rings">
-        <div className="pulse-ring" />
-        <div className="pulse-ring" />
-        <div className="pulse-ring" />
-      </div>
       <div className="particles">
         {Array.from({ length: 20 }, (_, i) => (
           <div key={i} className="particle" />
