@@ -105,7 +105,7 @@
       "datasource": { "type": "prometheus", "uid": "battleplanes-prometheus" },
       "targets": [
         {
-          "expr": "increase(battleplanes_games_finished_total[$__range])",
+          "expr": "sum(increase(battleplanes_games_finished_total[$__range]))",
           "legendFormat": ""
         }
       ],

@@ -1,6 +1,5 @@
 [
   {
-    "targets": ["backend-blue:8000"],
-    "labels": {"color": "blue"}
+    "targets": ["backend-blue:8000"]
   }
 ]

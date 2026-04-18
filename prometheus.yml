@@ -9,3 +9,7 @@ scrape_configs:
       - files:
           - /etc/prometheus/targets.json
         refresh_interval: 10s
+    metric_relabel_configs:
+      - source_labels: []
+        target_label: instance
+        replacement: "backend:8000"

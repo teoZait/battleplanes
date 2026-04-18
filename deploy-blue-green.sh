@@ -36,7 +36,7 @@ $COMPOSE up -d --remove-orphans redis prometheus grafana
 
 # ── Build and start the new color ──
 echo "==> Building $NEXT..."
-$COMPOSE build --no-cache "backend-$NEXT" "frontend-$NEXT"
+$COMPOSE build --pull "backend-$NEXT" "frontend-$NEXT"
 
 echo "==> Starting $NEXT..."
 $COMPOSE up -d --no-deps "backend-$NEXT" "frontend-$NEXT"
@@ -87,8 +87,7 @@ docker exec battleplanes-proxy nginx -s reload
 cat > prometheus-targets.json <<EOF
 [
   {
-    "targets": ["backend-$NEXT:8000"],
-    "labels": {"color": "$NEXT"}
+    "targets": ["backend-$NEXT:8000"]
   }
 ]
 EOF
